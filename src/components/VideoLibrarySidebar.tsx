@@ -1,8 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FolderVideoSelection } from '../shared/types';
 
-const thumbnailCache = new Map<string, string>();
-const thumbnailRequests = new Map<string, Promise<string | null>>();
+interface ThumbnailState {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  progress: number;
+  thumbnailUrl: string | null;
+}
+
+interface ThumbnailCacheEntry extends ThumbnailState {
+  promise: Promise<string | null> | null;
+  listeners: Set<(state: ThumbnailState) => void>;
+}
+
+const thumbnailCache = new Map<string, ThumbnailCacheEntry>();
 
 interface VideoLibrarySidebarProps {
   open: boolean;
@@ -10,118 +20,311 @@ interface VideoLibrarySidebarProps {
   activeCounts: Record<string, number>;
   onToggle: () => void;
   onPickFolder: () => void;
+  onThumbnailStateChange: (
+    sourceKey: string,
+    nextState: { thumbnailSource?: string; thumbnailProgress?: number }
+  ) => void;
 }
 
-function VideoThumbnail({ item }: { item: FolderVideoSelection }) {
-  const [thumbnailUrl, setThumbnailUrl] = useState(item.thumbnailSource ?? '');
+function clampProgress(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
 
-  useEffect(() => {
-    if (item.thumbnailSource) {
-      const cacheKey = item.sourceKey ?? item.source;
-      thumbnailCache.set(cacheKey, item.thumbnailSource);
-      setThumbnailUrl(item.thumbnailSource);
-      return;
+function getCacheKey(item: FolderVideoSelection): string {
+  return item.sourceKey ?? item.source;
+}
+
+function getOrCreateEntry(item: FolderVideoSelection): ThumbnailCacheEntry {
+  const cacheKey = getCacheKey(item);
+  const existing = thumbnailCache.get(cacheKey);
+  if (existing) {
+    if (item.thumbnailSource && !existing.thumbnailUrl) {
+      existing.thumbnailUrl = item.thumbnailSource;
+      existing.progress = 100;
+      existing.status = 'ready';
+    } else if (item.thumbnailProgress && existing.progress < item.thumbnailProgress) {
+      existing.progress = clampProgress(item.thumbnailProgress);
+      if (existing.status === 'idle') {
+        existing.status = 'loading';
+      }
     }
+    return existing;
+  }
 
-    const cacheKey = item.sourceKey ?? item.source;
-    const cachedThumbnail = thumbnailCache.get(cacheKey);
-    if (cachedThumbnail) {
-      setThumbnailUrl(cachedThumbnail);
-      return;
-    }
+  const next: ThumbnailCacheEntry = {
+    status: item.thumbnailSource ? 'ready' : item.thumbnailProgress ? 'loading' : 'idle',
+    progress: item.thumbnailSource ? 100 : clampProgress(item.thumbnailProgress ?? 0),
+    thumbnailUrl: item.thumbnailSource ?? null,
+    promise: null,
+    listeners: new Set()
+  };
+  thumbnailCache.set(cacheKey, next);
+  return next;
+}
 
-    const video = document.createElement('video');
-    video.src = item.source;
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = 'auto';
-    let captured = false;
-    let cancelled = false;
+function emitThumbnailState(cacheKey: string) {
+  const entry = thumbnailCache.get(cacheKey);
+  if (!entry) {
+    return;
+  }
 
-    async function loadThumbnail() {
-      const existingRequest = thumbnailRequests.get(cacheKey);
-      if (existingRequest) {
-        const existingThumbnail = await existingRequest;
-        if (!cancelled && existingThumbnail) {
-          setThumbnailUrl(existingThumbnail);
-        }
+  const snapshot: ThumbnailState = {
+    status: entry.status,
+    progress: entry.progress,
+    thumbnailUrl: entry.thumbnailUrl
+  };
+  entry.listeners.forEach((listener) => listener(snapshot));
+}
+
+function updateEntry(cacheKey: string, patch: Partial<ThumbnailState>) {
+  const entry = thumbnailCache.get(cacheKey);
+  if (!entry) {
+    return;
+  }
+
+  if (patch.status) {
+    entry.status = patch.status;
+  }
+  if (typeof patch.progress === 'number') {
+    entry.progress = clampProgress(patch.progress);
+  }
+  if (patch.thumbnailUrl !== undefined) {
+    entry.thumbnailUrl = patch.thumbnailUrl;
+  }
+  emitThumbnailState(cacheKey);
+}
+
+function subscribeToThumbnail(
+  item: FolderVideoSelection,
+  listener: (state: ThumbnailState) => void
+) {
+  const cacheKey = getCacheKey(item);
+  const entry = getOrCreateEntry(item);
+  entry.listeners.add(listener);
+  listener({
+    status: entry.status,
+    progress: entry.progress,
+    thumbnailUrl: entry.thumbnailUrl
+  });
+
+  return () => {
+    entry.listeners.delete(listener);
+  };
+}
+
+function ensureThumbnailLoading(item: FolderVideoSelection) {
+  const cacheKey = getCacheKey(item);
+  const entry = getOrCreateEntry(item);
+
+  if (entry.thumbnailUrl || entry.promise) {
+    return;
+  }
+
+  updateEntry(cacheKey, {
+    status: 'loading',
+    progress: Math.max(entry.progress, 8)
+  });
+
+  const video = document.createElement('video');
+  video.src = item.source;
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+  let captured = false;
+
+  const cleanup = () => {
+    video.src = '';
+  };
+
+  entry.promise = new Promise<string | null>((resolve) => {
+    const finalize = (value: string | null) => {
+      if (value) {
+        updateEntry(cacheKey, {
+          status: 'ready',
+          progress: 100,
+          thumbnailUrl: value
+        });
+      } else {
+        updateEntry(cacheKey, {
+          status: 'error',
+          progress: entry.progress
+        });
+      }
+      const current = thumbnailCache.get(cacheKey);
+      if (current) {
+        current.promise = null;
+      }
+      cleanup();
+      resolve(value);
+    };
+
+    const captureFrame = () => {
+      if (captured || video.videoWidth === 0 || video.videoHeight === 0) {
         return;
       }
 
-      const request = new Promise<string | null>((resolve) => {
-        const finalize = (value: string | null) => {
-          thumbnailRequests.delete(cacheKey);
-          if (value) {
-            thumbnailCache.set(cacheKey, value);
-          }
-          resolve(value);
-        };
+      const canvas = document.createElement('canvas');
+      canvas.width = 160;
+      canvas.height = 90;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        finalize(null);
+        return;
+      }
 
-        const captureFrame = () => {
-          if (captured || video.videoWidth === 0 || video.videoHeight === 0) {
-            return;
-          }
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      captured = true;
+      finalize(canvas.toDataURL('image/png'));
+    };
 
-          const canvas = document.createElement('canvas');
-          canvas.width = 160;
-          canvas.height = 90;
-          const context = canvas.getContext('2d');
-          if (!context) {
-            finalize(null);
-            return;
-          }
-
-          context.drawImage(video, 0, 0, canvas.width, canvas.height);
-          captured = true;
-          finalize(canvas.toDataURL('image/png'));
-        };
-
-        const handleLoadedMetadata = () => {
-          // Force an explicit seek back to the start so the sidebar uses frame zero.
-          if (video.currentTime !== 0) {
-            video.currentTime = 0;
-            return;
-          }
-
-          if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-            captureFrame();
-          }
-        };
-
-        const handleSeeked = () => captureFrame();
-        const handleLoadedData = () => captureFrame();
-        const handleError = () => finalize(null);
-
-        video.addEventListener('loadedmetadata', handleLoadedMetadata);
-        video.addEventListener('seeked', handleSeeked);
-        video.addEventListener('loadeddata', handleLoadedData);
-        video.addEventListener('error', handleError);
-
-        video.load();
+    const handleLoadedMetadata = () => {
+      updateEntry(cacheKey, {
+        status: 'loading',
+        progress: Math.max((thumbnailCache.get(cacheKey)?.progress ?? 0), 35)
       });
 
-      thumbnailRequests.set(cacheKey, request);
-      const nextThumbnail = await request;
-      if (!cancelled && nextThumbnail) {
-        setThumbnailUrl(nextThumbnail);
+      if (video.currentTime !== 0) {
+        video.currentTime = 0;
+        return;
       }
+
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        captureFrame();
+      }
+    };
+
+    const handleLoadedData = () => {
+      updateEntry(cacheKey, {
+        status: 'loading',
+        progress: Math.max((thumbnailCache.get(cacheKey)?.progress ?? 0), 72)
+      });
+      captureFrame();
+    };
+
+    const handleSeeked = () => {
+      updateEntry(cacheKey, {
+        status: 'loading',
+        progress: Math.max((thumbnailCache.get(cacheKey)?.progress ?? 0), 88)
+      });
+      captureFrame();
+    };
+
+    const handleError = () => finalize(null);
+
+    video.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true });
+    video.addEventListener('loadeddata', handleLoadedData);
+    video.addEventListener('seeked', handleSeeked);
+    video.addEventListener('error', handleError, { once: true });
+    video.load();
+  });
+}
+
+function useThumbnailState(item: FolderVideoSelection) {
+  const [state, setState] = useState<ThumbnailState>(() => {
+    const entry = getOrCreateEntry(item);
+    return {
+      status: entry.status,
+      progress: entry.progress,
+      thumbnailUrl: entry.thumbnailUrl
+    };
+  });
+
+  useEffect(() => subscribeToThumbnail(item, setState), [item]);
+
+  useEffect(() => {
+    if (!state.thumbnailUrl) {
+      ensureThumbnailLoading(item);
+    }
+  }, [item, state.thumbnailUrl]);
+
+  return state;
+}
+
+function VideoThumbnailCard({
+  item,
+  activeCount,
+  onThumbnailStateChange
+}: {
+  item: FolderVideoSelection;
+  activeCount: number;
+  onThumbnailStateChange: (
+    sourceKey: string,
+    nextState: { thumbnailSource?: string; thumbnailProgress?: number }
+  ) => void;
+}) {
+  const cacheKey = getCacheKey(item);
+  const thumbnailState = useThumbnailState(item);
+
+  useEffect(() => {
+    onThumbnailStateChange(cacheKey, {
+      thumbnailSource: thumbnailState.thumbnailUrl ?? undefined,
+      thumbnailProgress: thumbnailState.progress
+    });
+  }, [cacheKey, onThumbnailStateChange, thumbnailState.progress, thumbnailState.thumbnailUrl]);
+
+  const loadingFrameStyle = useMemo(() => {
+    if (thumbnailState.status !== 'loading') {
+      return undefined;
     }
 
-    void loadThumbnail();
-
-    return () => {
-      cancelled = true;
-      video.src = '';
+    return {
+      background: `conic-gradient(from 0deg, rgba(142, 247, 187, 0.95) 0deg ${
+        (thumbnailState.progress / 100) * 360
+      }deg, rgba(66, 78, 99, 0.4) ${(thumbnailState.progress / 100) * 360}deg 360deg)`
     };
-  }, [item.source, item.thumbnailSource]);
-
-  if (thumbnailUrl) {
-    return <img src={thumbnailUrl} alt="" className="h-full w-full object-cover" />;
-  }
+  }, [thumbnailState.progress, thumbnailState.status]);
 
   return (
-    <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,#25314d,transparent_56%)] text-xs uppercase tracking-[0.25em] text-slate-300">
-      Video
+    <div
+      draggable
+      data-testid={`sidebar-video-${item.label}`}
+      onDragStart={(event) => {
+        event.dataTransfer.setData('application/x-grid-video', JSON.stringify(item));
+        event.dataTransfer.effectAllowed = 'copy';
+      }}
+      className="group cursor-grab overflow-hidden rounded-[22px] border border-border bg-card transition hover:border-accent active:cursor-grabbing"
+    >
+      <div
+        className={`relative aspect-video overflow-hidden bg-slate-950 ${
+          thumbnailState.status === 'loading' ? 'p-[3px]' : ''
+        }`}
+        style={loadingFrameStyle}
+      >
+        <div className="relative h-full w-full overflow-hidden rounded-[16px] bg-slate-950">
+          {thumbnailState.thumbnailUrl ? (
+            <img src={thumbnailState.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,#25314d,transparent_56%)] text-xs uppercase tracking-[0.25em] text-slate-300">
+              {thumbnailState.status === 'loading'
+                ? `Loading ${thumbnailState.progress}%`
+                : 'Video'}
+            </div>
+          )}
+
+          {activeCount > 0 ? (
+            <div className="absolute right-2 top-2 rounded-full bg-accent px-2 py-1 text-xs font-semibold text-slate-950">
+              {activeCount}
+            </div>
+          ) : null}
+
+          {thumbnailState.status === 'loading' ? (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-3 py-2 text-[11px] uppercase tracking-[0.22em] text-accentSoft">
+              Thumbnail {thumbnailState.progress}%
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-3 px-3 py-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-white">{item.label}</p>
+          <p className="text-xs text-slate-400">
+            {thumbnailState.status === 'loading' ? 'Preparing preview' : 'Drag to play'}
+          </p>
+        </div>
+        <div className="rounded-full border border-border px-2 py-1 text-[11px] uppercase tracking-[0.2em] text-slate-300">
+          Local
+        </div>
+      </div>
     </div>
   );
 }
@@ -131,7 +334,8 @@ export function VideoLibrarySidebar({
   videos,
   activeCounts,
   onToggle,
-  onPickFolder
+  onPickFolder,
+  onThumbnailStateChange
 }: VideoLibrarySidebarProps) {
   return (
     <aside
@@ -174,39 +378,14 @@ export function VideoLibrarySidebar({
               </div>
             ) : (
               <div className="grid gap-3">
-                {videos.map((item) => {
-                  const activeCount = activeCounts[item.sourceKey ?? item.source] ?? 0;
-                  return (
-                    <div
-                      key={item.sourceKey ?? item.source}
-                      draggable
-                      data-testid={`sidebar-video-${item.label}`}
-                      onDragStart={(event) => {
-                        event.dataTransfer.setData('application/x-grid-video', JSON.stringify(item));
-                        event.dataTransfer.effectAllowed = 'copy';
-                      }}
-                      className="group cursor-grab overflow-hidden rounded-[22px] border border-border bg-card transition hover:border-accent active:cursor-grabbing"
-                    >
-                      <div className="relative aspect-video overflow-hidden bg-slate-950">
-                        <VideoThumbnail item={item} />
-                        {activeCount > 0 ? (
-                          <div className="absolute right-2 top-2 rounded-full bg-accent px-2 py-1 text-xs font-semibold text-slate-950">
-                            {activeCount}
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="flex items-center justify-between gap-3 px-3 py-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-white">{item.label}</p>
-                          <p className="text-xs text-slate-400">Drag to play</p>
-                        </div>
-                        <div className="rounded-full border border-border px-2 py-1 text-[11px] uppercase tracking-[0.2em] text-slate-300">
-                          Local
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                {videos.map((item) => (
+                  <VideoThumbnailCard
+                    key={getCacheKey(item)}
+                    item={item}
+                    activeCount={activeCounts[getCacheKey(item)] ?? 0}
+                    onThumbnailStateChange={onThumbnailStateChange}
+                  />
+                ))}
               </div>
             )}
           </div>

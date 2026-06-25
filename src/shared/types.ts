@@ -77,6 +77,7 @@ export interface LocalVideoSelection {
 
 export interface FolderVideoSelection extends LocalVideoSelection {
   thumbnailSource?: string;
+  thumbnailProgress?: number;
 }
 
 export interface GridLibraryState {

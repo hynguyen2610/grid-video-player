@@ -219,6 +219,39 @@ function App() {
     }
   }
 
+  function handleLibraryThumbnailState(
+    sourceKey: string,
+    nextState: { thumbnailSource?: string; thumbnailProgress?: number }
+  ) {
+    setLibraryVideos((current) => {
+      let changed = false;
+      const nextVideos = current.map((video) => {
+        if ((video.sourceKey ?? video.source) !== sourceKey) {
+          return video;
+        }
+
+        const nextThumbnailSource = nextState.thumbnailSource ?? video.thumbnailSource;
+        const nextThumbnailProgress = nextState.thumbnailProgress ?? video.thumbnailProgress;
+
+        if (
+          nextThumbnailSource === video.thumbnailSource &&
+          nextThumbnailProgress === video.thumbnailProgress
+        ) {
+          return video;
+        }
+
+        changed = true;
+        return {
+          ...video,
+          thumbnailSource: nextThumbnailSource,
+          thumbnailProgress: nextThumbnailProgress
+        };
+      });
+
+      return changed ? nextVideos : current;
+    });
+  }
+
   function registerVideo(id: string, element: HTMLVideoElement | null) {
     if (element) {
       videoMap.current.set(id, element);
@@ -391,6 +424,7 @@ function App() {
             activeCounts={activeSourceCounts}
             onToggle={() => setSidebarOpen((value) => !value)}
             onPickFolder={() => void handlePickFolder()}
+            onThumbnailStateChange={handleLibraryThumbnailState}
           />
         ) : null}
 

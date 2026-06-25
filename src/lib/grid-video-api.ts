@@ -28,7 +28,9 @@ interface FilePickerWindow extends Window {
 }
 
 interface PersistedGridSession extends Omit<GridSession, 'libraryVideos'> {
-  libraryVideos?: Array<Pick<FolderVideoSelection, 'label' | 'sourceKey' | 'thumbnailSource'>>;
+  libraryVideos?: Array<
+    Pick<FolderVideoSelection, 'label' | 'sourceKey' | 'thumbnailSource' | 'thumbnailProgress'>
+  >;
 }
 
 function parsePersistedSession(raw: string | null): PersistedGridSession | null {
@@ -54,7 +56,8 @@ function cloneSession(session: GridSession): PersistedGridSession {
     libraryVideos: (session.libraryVideos ?? []).map((video) => ({
       label: video.label,
       sourceKey: video.sourceKey ?? video.source,
-      thumbnailSource: video.thumbnailSource
+      thumbnailSource: video.thumbnailSource,
+      thumbnailProgress: video.thumbnailProgress
     })),
     presets: session.presets.map((preset) => ({
       ...preset,
@@ -170,7 +173,8 @@ async function restoreLibraryVideos(
         source: localVideo.source,
         label: video.label || localVideo.label,
         sourceKey: video.sourceKey,
-        thumbnailSource: video.thumbnailSource
+        thumbnailSource: video.thumbnailSource,
+        thumbnailProgress: video.thumbnailProgress
       } satisfies FolderVideoSelection;
     })
   );
@@ -346,7 +350,8 @@ async function pickVideoFolderFiles(): Promise<FolderVideoSelection[]> {
           files.push({
             source: URL.createObjectURL(file),
             label: file.name.replace(/\.[^.]+$/, '') || 'Local Video',
-            sourceKey
+            sourceKey,
+            thumbnailProgress: 0
           });
         }
       }
@@ -371,7 +376,8 @@ async function pickVideoFolderFiles(): Promise<FolderVideoSelection[]> {
             ({
               source: URL.createObjectURL(file),
               label: file.name.replace(/\.[^.]+$/, '') || 'Local Video',
-              sourceKey: `local:${file.name}:${file.size}:${file.lastModified}`
+              sourceKey: `local:${file.name}:${file.size}:${file.lastModified}`,
+              thumbnailProgress: 0
             }) satisfies FolderVideoSelection
         );
       resolve(files);
