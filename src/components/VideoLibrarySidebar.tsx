@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { FolderVideoSelection } from '../shared/types';
 
+const thumbnailCache = new Map<string, string>();
+const thumbnailRequests = new Map<string, Promise<string | null>>();
+
 interface VideoLibrarySidebarProps {
   open: boolean;
   videos: FolderVideoSelection[];
@@ -14,7 +17,16 @@ function VideoThumbnail({ item }: { item: FolderVideoSelection }) {
 
   useEffect(() => {
     if (item.thumbnailSource) {
+      const cacheKey = item.sourceKey ?? item.source;
+      thumbnailCache.set(cacheKey, item.thumbnailSource);
       setThumbnailUrl(item.thumbnailSource);
+      return;
+    }
+
+    const cacheKey = item.sourceKey ?? item.source;
+    const cachedThumbnail = thumbnailCache.get(cacheKey);
+    if (cachedThumbnail) {
+      setThumbnailUrl(cachedThumbnail);
       return;
     }
 
@@ -24,48 +36,81 @@ function VideoThumbnail({ item }: { item: FolderVideoSelection }) {
     video.playsInline = true;
     video.preload = 'auto';
     let captured = false;
+    let cancelled = false;
 
-    const captureFrame = () => {
-      if (captured || video.videoWidth === 0 || video.videoHeight === 0) {
+    async function loadThumbnail() {
+      const existingRequest = thumbnailRequests.get(cacheKey);
+      if (existingRequest) {
+        const existingThumbnail = await existingRequest;
+        if (!cancelled && existingThumbnail) {
+          setThumbnailUrl(existingThumbnail);
+        }
         return;
       }
 
-      const canvas = document.createElement('canvas');
-      canvas.width = 160;
-      canvas.height = 90;
-      const context = canvas.getContext('2d');
-      if (!context) {
-        return;
+      const request = new Promise<string | null>((resolve) => {
+        const finalize = (value: string | null) => {
+          thumbnailRequests.delete(cacheKey);
+          if (value) {
+            thumbnailCache.set(cacheKey, value);
+          }
+          resolve(value);
+        };
+
+        const captureFrame = () => {
+          if (captured || video.videoWidth === 0 || video.videoHeight === 0) {
+            return;
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = 160;
+          canvas.height = 90;
+          const context = canvas.getContext('2d');
+          if (!context) {
+            finalize(null);
+            return;
+          }
+
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          captured = true;
+          finalize(canvas.toDataURL('image/png'));
+        };
+
+        const handleLoadedMetadata = () => {
+          // Force an explicit seek back to the start so the sidebar uses frame zero.
+          if (video.currentTime !== 0) {
+            video.currentTime = 0;
+            return;
+          }
+
+          if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+            captureFrame();
+          }
+        };
+
+        const handleSeeked = () => captureFrame();
+        const handleLoadedData = () => captureFrame();
+        const handleError = () => finalize(null);
+
+        video.addEventListener('loadedmetadata', handleLoadedMetadata);
+        video.addEventListener('seeked', handleSeeked);
+        video.addEventListener('loadeddata', handleLoadedData);
+        video.addEventListener('error', handleError);
+
+        video.load();
+      });
+
+      thumbnailRequests.set(cacheKey, request);
+      const nextThumbnail = await request;
+      if (!cancelled && nextThumbnail) {
+        setThumbnailUrl(nextThumbnail);
       }
+    }
 
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      captured = true;
-      setThumbnailUrl(canvas.toDataURL('image/png'));
-    };
-
-    const handleLoadedMetadata = () => {
-      // Force an explicit seek back to the start so the sidebar uses frame zero.
-      if (video.currentTime !== 0) {
-        video.currentTime = 0;
-        return;
-      }
-
-      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-        captureFrame();
-      }
-    };
-
-    const handleSeeked = () => captureFrame();
-    const handleLoadedData = () => captureFrame();
-
-    video.addEventListener('loadedmetadata', handleLoadedMetadata);
-    video.addEventListener('seeked', handleSeeked);
-    video.addEventListener('loadeddata', handleLoadedData);
+    void loadThumbnail();
 
     return () => {
-      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      video.removeEventListener('seeked', handleSeeked);
-      video.removeEventListener('loadeddata', handleLoadedData);
+      cancelled = true;
       video.src = '';
     };
   }, [item.source, item.thumbnailSource]);
