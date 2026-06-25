@@ -18,14 +18,18 @@ function VideoThumbnail({ item }: { item: FolderVideoSelection }) {
       return;
     }
 
-    let revokedUrl: string | null = null;
     const video = document.createElement('video');
     video.src = item.source;
     video.muted = true;
     video.playsInline = true;
-    video.preload = 'metadata';
+    video.preload = 'auto';
+    let captured = false;
 
-    const handleLoadedData = () => {
+    const captureFrame = () => {
+      if (captured || video.videoWidth === 0 || video.videoHeight === 0) {
+        return;
+      }
+
       const canvas = document.createElement('canvas');
       canvas.width = 160;
       canvas.height = 90;
@@ -35,13 +39,32 @@ function VideoThumbnail({ item }: { item: FolderVideoSelection }) {
       }
 
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      revokedUrl = canvas.toDataURL('image/png');
-      setThumbnailUrl(revokedUrl);
+      captured = true;
+      setThumbnailUrl(canvas.toDataURL('image/png'));
     };
 
+    const handleLoadedMetadata = () => {
+      // Force an explicit seek back to the start so the sidebar uses frame zero.
+      if (video.currentTime !== 0) {
+        video.currentTime = 0;
+        return;
+      }
+
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        captureFrame();
+      }
+    };
+
+    const handleSeeked = () => captureFrame();
+    const handleLoadedData = () => captureFrame();
+
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    video.addEventListener('seeked', handleSeeked);
     video.addEventListener('loadeddata', handleLoadedData);
 
     return () => {
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      video.removeEventListener('seeked', handleSeeked);
       video.removeEventListener('loadeddata', handleLoadedData);
       video.src = '';
     };
