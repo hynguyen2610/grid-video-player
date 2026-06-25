@@ -227,6 +227,14 @@ export function VideoCell({
     window.addEventListener('mouseup', handleMouseUp);
   }
 
+  function togglePlayback() {
+    if (isEmpty || !cell.resolvedSource) {
+      return;
+    }
+
+    onPlayChange(cell.id, !cell.playing);
+  }
+
   return (
     <div
       ref={setContainer}
@@ -258,6 +266,7 @@ export function VideoCell({
         setDropActive(false);
         onDropSource(cell.id, payload);
       }}
+      onClick={() => togglePlayback()}
     >
       <div className="relative flex-1 overflow-hidden bg-slate-950">
         {cell.resolvedSource ? (
@@ -265,6 +274,10 @@ export function VideoCell({
             ref={videoRef}
             className="h-full w-full bg-black object-contain"
             playsInline
+            onClick={(event) => {
+              event.stopPropagation();
+              togglePlayback();
+            }}
             onPlay={() => onPlayChange(cell.id, true)}
             onPause={() => onPlayChange(cell.id, false)}
             onLoadedMetadata={(event) =>
@@ -291,7 +304,10 @@ export function VideoCell({
               <button
                 type="button"
                 data-testid={`video-cell-add-${cell.id}`}
-                onClick={() => onAddSource(cell.id)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onAddSource(cell.id);
+                }}
                 className="mt-5 rounded-full bg-accent px-4 py-2 text-sm font-medium text-slate-900 transition hover:brightness-105"
               >
                 + Add Video
@@ -329,14 +345,20 @@ export function VideoCell({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => onPlayChange(cell.id, !cell.playing)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onPlayChange(cell.id, !cell.playing);
+                    }}
                     className="rounded-full border border-white/20 bg-black/45 px-3 py-2 text-sm text-white backdrop-blur transition hover:border-accent"
                   >
                     {cell.playing ? 'Pause' : 'Play'}
                   </button>
                   <button
                     type="button"
-                    onClick={() => onMutedChange(cell.id, !cell.muted)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onMutedChange(cell.id, !cell.muted);
+                    }}
                     className="rounded-full border border-white/20 bg-black/45 px-3 py-2 text-sm text-white backdrop-blur transition hover:border-accent"
                   >
                     {cell.muted ? 'Unmute' : 'Mute'}
@@ -351,14 +373,20 @@ export function VideoCell({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => onChangeSource(cell.id)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onChangeSource(cell.id);
+                    }}
                     className="rounded-full border border-white/20 bg-black/45 px-3 py-2 text-sm text-slate-100 backdrop-blur transition hover:border-accent hover:text-white"
                   >
                     Change
                   </button>
                   <button
                     type="button"
-                    onClick={() => onRemove(cell.id)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onRemove(cell.id);
+                    }}
                     className="rounded-full border border-rose-300/40 bg-black/45 px-3 py-2 text-sm text-rose-100 backdrop-blur transition hover:bg-danger/20"
                   >
                     Remove
@@ -375,6 +403,7 @@ export function VideoCell({
                     step={0.1}
                     value={Math.min(cell.currentTime, cell.duration ?? cell.currentTime)}
                     onChange={(event) => {
+                      event.stopPropagation();
                       const video = videoRef.current;
                       const nextTime = Number(event.target.value);
                       if (video) {
@@ -389,7 +418,10 @@ export function VideoCell({
                     min={0}
                     max={100}
                     value={cell.volume}
-                    onChange={(event) => onVolumeChange(cell.id, Number(event.target.value))}
+                    onChange={(event) => {
+                      event.stopPropagation();
+                      onVolumeChange(cell.id, Number(event.target.value));
+                    }}
                     aria-label={`Volume for ${cell.label}`}
                     className="h-2 w-24 cursor-pointer accent-accent"
                   />
@@ -410,7 +442,10 @@ export function VideoCell({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => onPlayChange(cell.id, !cell.playing)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onPlayChange(cell.id, !cell.playing);
+                }}
                 className="rounded-full border border-border px-3 py-2 text-sm text-white transition hover:border-accent"
               >
                 {cell.playing ? 'Pause' : 'Play'}
@@ -426,14 +461,20 @@ export function VideoCell({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => onChangeSource(cell.id)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onChangeSource(cell.id);
+                }}
                 className="rounded-full border border-border px-3 py-2 text-sm text-slate-200 transition hover:border-accent hover:text-white"
               >
                 {showLabels ? 'Change Video' : 'Change'}
               </button>
               <button
                 type="button"
-                onClick={() => onRemove(cell.id)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onRemove(cell.id);
+                }}
                 className="rounded-full border border-danger/60 px-3 py-2 text-sm text-rose-200 transition hover:bg-danger/10"
               >
                 Remove
@@ -450,6 +491,7 @@ export function VideoCell({
                 step={0.1}
                 value={Math.min(cell.currentTime, cell.duration ?? cell.currentTime)}
                 onChange={(event) => {
+                  event.stopPropagation();
                   const video = videoRef.current;
                   const nextTime = Number(event.target.value);
                   if (video) {
@@ -469,7 +511,10 @@ export function VideoCell({
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => onMutedChange(cell.id, !cell.muted)}
+              onClick={(event) => {
+                event.stopPropagation();
+                onMutedChange(cell.id, !cell.muted);
+              }}
               className="rounded-full border border-border px-3 py-2 text-sm text-white transition hover:border-accent"
             >
               {cell.muted ? 'Unmute' : 'Mute'}
@@ -480,7 +525,10 @@ export function VideoCell({
               min={0}
               max={100}
               value={cell.volume}
-              onChange={(event) => onVolumeChange(cell.id, Number(event.target.value))}
+              onChange={(event) => {
+                event.stopPropagation();
+                onVolumeChange(cell.id, Number(event.target.value));
+              }}
               className="h-2 w-full cursor-pointer accent-accent"
             />
 

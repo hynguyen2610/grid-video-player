@@ -532,4 +532,87 @@ describe('App UI behavior', () => {
 
     expect(await screen.findByRole('button', { name: 'Show Library' })).toBeInTheDocument();
   });
+
+  it('toggles play and pause when clicking on the video cell surface', async () => {
+    const user = userEvent.setup();
+    const bridge = createBridgeMock({
+      cells: [
+        {
+          id: 'cell-1',
+          colSpan: 1,
+          rowSpan: 1,
+          label: 'Lobby',
+          source: '/videos/lobby.mp4',
+          sourceKey: 'local:lobby',
+          sourceType: 'local',
+          resolvedSource: 'http://127.0.0.1/local/lobby.mp4',
+          playing: false,
+          muted: false,
+          volume: 80,
+          currentTime: 0,
+          duration: 120,
+          isLive: false,
+          status: 'ready',
+          error: null
+        }
+      ],
+      presets: [],
+      recentSources: []
+    });
+    window.gridVideo = bridge;
+
+    render(<App />);
+
+    await screen.findByText('Lobby');
+    const cellSurface = screen.getByTestId('video-cell-cell-1');
+
+    await user.click(cellSurface);
+    await waitFor(() => {
+      expect(useGridStore.getState().cells.find((cell) => cell.id === 'cell-1')?.playing).toBe(true);
+    });
+
+    await user.click(cellSurface);
+    await waitFor(() => {
+      expect(useGridStore.getState().cells.find((cell) => cell.id === 'cell-1')?.playing).toBe(false);
+    });
+  });
+
+  it('does not toggle playback when clicking non-playback in-cell controls', async () => {
+    const user = userEvent.setup();
+    const bridge = createBridgeMock({
+      cells: [
+        {
+          id: 'cell-1',
+          colSpan: 1,
+          rowSpan: 1,
+          label: 'Lobby',
+          source: '/videos/lobby.mp4',
+          sourceKey: 'local:lobby',
+          sourceType: 'local',
+          resolvedSource: 'http://127.0.0.1/local/lobby.mp4',
+          playing: true,
+          muted: false,
+          volume: 80,
+          currentTime: 0,
+          duration: 120,
+          isLive: false,
+          status: 'ready',
+          error: null
+        }
+      ],
+      presets: [],
+      recentSources: []
+    });
+    window.gridVideo = bridge;
+
+    render(<App />);
+
+    await screen.findByText('Lobby');
+
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    expect(useGridStore.getState().cells.find((cell) => cell.id === 'cell-1')?.playing).toBe(true);
+
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(useGridStore.getState().cells.find((cell) => cell.id === 'cell-1')?.source).toBeNull();
+  });
 });
