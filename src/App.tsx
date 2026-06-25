@@ -22,11 +22,13 @@ function App() {
     columns,
     rows,
     tier,
+    layoutMode,
     addCell,
     removeCell,
     replaceCellSource,
     setResolvedSource,
     setGridSize,
+    setLayoutMode,
     setCellPlayback,
     setCellSpan,
     setCellMuted,
@@ -59,7 +61,7 @@ function App() {
     persistTimer.current = window.setTimeout(() => {
       void api.saveSession(selectSession(useGridStore.getState()));
     }, 250);
-  }, [api, cells, hydrated, presets, recentSources]);
+  }, [api, cells, columns, hydrated, layoutMode, presets, recentSources, rows]);
 
   useEffect(() => {
     return () => {
@@ -254,11 +256,23 @@ function App() {
 
   const compact = tier === 'dense';
   const activeCells = cells.filter((cell) => !!cell.source);
+  const fitViewport = layoutMode === 'fit';
+  const rootClassName = fitViewport
+    ? 'flex h-screen flex-col overflow-hidden bg-[radial-gradient(circle_at_top,#1e2841,transparent_32%),linear-gradient(180deg,#0a0d14_0%,#0d1220_100%)] text-white'
+    : 'min-h-screen bg-[radial-gradient(circle_at_top,#1e2841,transparent_32%),linear-gradient(180deg,#0a0d14_0%,#0d1220_100%)] text-white';
+  const mainClassName = fitViewport
+    ? isFullscreen
+      ? 'flex-1 overflow-hidden p-3'
+      : 'flex-1 overflow-hidden p-5'
+    : isFullscreen
+      ? 'p-3'
+      : 'p-5';
 
   return (
     <div
       ref={appRootRef}
-      className="min-h-screen bg-[radial-gradient(circle_at_top,#1e2841,transparent_32%),linear-gradient(180deg,#0a0d14_0%,#0d1220_100%)] text-white"
+      data-testid="app-shell"
+      className={rootClassName}
     >
       {!isFullscreen ? (
         <Toolbar
@@ -290,13 +304,20 @@ function App() {
         </button>
       ) : null}
 
-      <main className={isFullscreen ? 'p-3' : 'p-5'}>
+      <main data-testid="app-main" className={mainClassName}>
         <div
-          className="grid gap-3"
+          data-testid="video-grid"
+          className={`grid gap-3 ${fitViewport ? 'h-full' : ''}`}
           style={{
             gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
             gridAutoFlow: 'dense',
-            gridAutoRows: isFullscreen ? 'minmax(160px, 1fr)' : 'minmax(220px, 1fr)'
+            ...(fitViewport
+              ? {
+                  gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`
+                }
+              : {
+                  gridAutoRows: isFullscreen ? 'minmax(160px, 1fr)' : 'minmax(220px, 1fr)'
+                })
           }}
         >
           {cells.map((cell) => (
@@ -333,8 +354,12 @@ function App() {
         open={gridConfigOpen}
         initialRows={rows}
         initialColumns={columns}
+        initialLayoutMode={layoutMode}
         onClose={() => setGridConfigOpen(false)}
-        onApply={(nextRows, nextColumns) => setGridSize(nextRows, nextColumns)}
+        onApply={(nextRows, nextColumns, nextLayoutMode) => {
+          setGridSize(nextRows, nextColumns);
+          setLayoutMode(nextLayoutMode);
+        }}
       />
     </div>
   );

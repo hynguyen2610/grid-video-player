@@ -322,4 +322,26 @@ describe('App UI behavior', () => {
       expect(updatedCell?.rowSpan).toBe(3);
     });
   });
+
+  it('defaults to fit-to-viewport layout and lets the user switch to scrolling in grid config', async () => {
+    const user = userEvent.setup();
+    const bridge = createBridgeMock();
+    window.gridVideo = bridge;
+
+    render(<App />);
+
+    await screen.findByText('The wall is ready.');
+
+    expect(useGridStore.getState().layoutMode).toBe('fit');
+    expect(screen.getByTestId('app-shell').className).toContain('h-screen');
+
+    await user.click(screen.getByRole('button', { name: 'Grid Config' }));
+    await user.click(screen.getByRole('button', { name: /Scrolling/i }));
+    await user.click(screen.getByRole('button', { name: 'Apply Grid' }));
+
+    await waitFor(() => {
+      expect(useGridStore.getState().layoutMode).toBe('scroll');
+    });
+    expect(screen.getByTestId('app-shell').className).toContain('min-h-screen');
+  });
 });

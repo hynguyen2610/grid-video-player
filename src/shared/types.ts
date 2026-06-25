@@ -1,4 +1,5 @@
 export type SourceType = 'local' | 'hls' | 'dash' | 'rtsp';
+export type LayoutMode = 'fit' | 'scroll';
 
 export interface Cell {
   id: string;
@@ -39,6 +40,7 @@ export interface Preset {
 export interface GridSession {
   gridColumns?: number;
   gridRows?: number;
+  layoutMode?: LayoutMode;
   cells: Cell[];
   presets: Preset[];
   recentSources: string[];

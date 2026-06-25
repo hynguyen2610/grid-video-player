@@ -1,30 +1,35 @@
 import { useEffect, useState } from 'react';
+import type { LayoutMode } from '../shared/types';
 import { maxGridDimension } from '../state/grid-store';
 
 interface GridConfigDialogProps {
   open: boolean;
   initialRows: number;
   initialColumns: number;
+  initialLayoutMode: LayoutMode;
   onClose: () => void;
-  onApply: (rows: number, columns: number) => void;
+  onApply: (rows: number, columns: number, layoutMode: LayoutMode) => void;
 }
 
 export function GridConfigDialog({
   open,
   initialRows,
   initialColumns,
+  initialLayoutMode,
   onClose,
   onApply
 }: GridConfigDialogProps) {
   const [rows, setRows] = useState(initialRows);
   const [columns, setColumns] = useState(initialColumns);
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>(initialLayoutMode);
 
   useEffect(() => {
     if (open) {
       setRows(initialRows);
       setColumns(initialColumns);
+      setLayoutMode(initialLayoutMode);
     }
-  }, [initialColumns, initialRows, open]);
+  }, [initialColumns, initialLayoutMode, initialRows, open]);
 
   if (!open) {
     return null;
@@ -79,6 +84,39 @@ export function GridConfigDialog({
           Result: {rows} x {columns} ({rows * columns} slots)
         </p>
 
+        <div className="mt-5 grid gap-2">
+          <p className="text-sm text-slate-300">Layout mode</p>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setLayoutMode('fit')}
+              aria-pressed={layoutMode === 'fit'}
+              className={`rounded-2xl border px-4 py-3 text-left text-sm transition ${
+                layoutMode === 'fit'
+                  ? 'border-accent bg-accent/15 text-white'
+                  : 'border-border bg-canvas text-slate-300 hover:border-accent'
+              }`}
+            >
+              <span className="block font-medium">Fit to Viewport</span>
+              <span className="mt-1 block text-xs text-slate-400">Keep all videos in view.</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setLayoutMode('scroll')}
+              aria-pressed={layoutMode === 'scroll'}
+              className={`rounded-2xl border px-4 py-3 text-left text-sm transition ${
+                layoutMode === 'scroll'
+                  ? 'border-accent bg-accent/15 text-white'
+                  : 'border-border bg-canvas text-slate-300 hover:border-accent'
+              }`}
+            >
+              <span className="block font-medium">Scrolling</span>
+              <span className="mt-1 block text-xs text-slate-400">Allow the wall to grow vertically.</span>
+            </button>
+          </div>
+        </div>
+
         <div className="mt-6 flex justify-end gap-3">
           <button
             type="button"
@@ -90,7 +128,7 @@ export function GridConfigDialog({
           <button
             type="button"
             onClick={() => {
-              onApply(rows, columns);
+              onApply(rows, columns, layoutMode);
               onClose();
             }}
             className="rounded-2xl bg-accent px-5 py-3 text-sm font-medium text-slate-900 transition hover:brightness-105"
