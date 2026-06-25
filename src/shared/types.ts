@@ -41,6 +41,7 @@ export interface GridSession {
   gridColumns?: number;
   gridRows?: number;
   layoutMode?: LayoutMode;
+  compactMode?: boolean;
   cells: Cell[];
   presets: Preset[];
   recentSources: string[];

@@ -5,6 +5,7 @@ import { getGridTier } from '../utils/grid';
 const DEFAULT_GRID_COLUMNS = 3;
 const DEFAULT_GRID_ROWS = 3;
 const DEFAULT_LAYOUT_MODE: LayoutMode = 'fit';
+const DEFAULT_COMPACT_MODE = true;
 const MAX_GRID_DIMENSION = 6;
 const MAX_CELLS = 36;
 
@@ -56,8 +57,10 @@ interface GridState extends GridSession {
   rows: number;
   tier: ReturnType<typeof getGridTier>;
   layoutMode: LayoutMode;
+  compactMode: boolean;
   setGridSize: (rows: number, columns: number) => void;
   setLayoutMode: (layoutMode: LayoutMode) => void;
+  setCompactMode: (compactMode: boolean) => void;
   addCell: (cell?: Partial<Cell>) => string | null;
   removeCell: (id: string) => void;
   replaceCellSource: (id: string, source: string, sourceType: SourceType, label?: string) => void;
@@ -87,12 +90,14 @@ function deriveGrid(columns: number, rows: number) {
 const initialGridState: Pick<
   GridState,
   'cells' | 'presets' | 'recentSources' | 'hydrated' | 'columns' | 'rows' | 'tier' | 'layoutMode'
+  | 'compactMode'
 > = {
   cells: createGridCells(DEFAULT_GRID_COLUMNS * DEFAULT_GRID_ROWS),
   presets: [],
   recentSources: [],
   hydrated: false,
   layoutMode: DEFAULT_LAYOUT_MODE,
+  compactMode: DEFAULT_COMPACT_MODE,
   ...deriveGrid(DEFAULT_GRID_COLUMNS, DEFAULT_GRID_ROWS)
 };
 
@@ -116,6 +121,9 @@ export const useGridStore = create<GridState>((set, get) => ({
   },
   setLayoutMode: (layoutMode) => {
     set({ layoutMode });
+  },
+  setCompactMode: (compactMode) => {
+    set({ compactMode });
   },
   addCell: (cell) => {
     const emptyCell = get().cells.find((entry) => !entry.source);
@@ -282,6 +290,7 @@ export const useGridStore = create<GridState>((set, get) => ({
       presets: session.presets,
       recentSources: session.recentSources,
       layoutMode: session.layoutMode ?? DEFAULT_LAYOUT_MODE,
+      compactMode: session.compactMode ?? DEFAULT_COMPACT_MODE,
       hydrated: true,
       ...deriveGrid(columns, rows)
     });
@@ -293,6 +302,7 @@ export function selectSession(state: GridState): GridSession {
     gridColumns: state.columns,
     gridRows: state.rows,
     layoutMode: state.layoutMode,
+    compactMode: state.compactMode,
     cells: state.cells,
     presets: state.presets,
     recentSources: state.recentSources
@@ -309,4 +319,5 @@ export function resetGridStore() {
 export const defaultGridColumns = DEFAULT_GRID_COLUMNS;
 export const defaultGridRows = DEFAULT_GRID_ROWS;
 export const defaultLayoutMode = DEFAULT_LAYOUT_MODE;
+export const defaultCompactMode = DEFAULT_COMPACT_MODE;
 export const maxGridDimension = MAX_GRID_DIMENSION;

@@ -63,6 +63,7 @@ export function VideoCell({
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const width = useElementWidth(container);
   const showLabels = width > 320 && !compact;
+  const showCompactLabels = width > 300;
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const resizeStateRef = useRef<{
     startX: number;
@@ -227,7 +228,9 @@ export function VideoCell({
     <div
       ref={setContainer}
       data-testid={`video-cell-${cell.id}`}
-      className="group relative flex min-h-[220px] flex-col overflow-hidden rounded-[28px] border border-border bg-card shadow-[0_20px_80px_rgba(0,0,0,0.28)]"
+      className={`group relative flex overflow-hidden rounded-[28px] border border-border bg-card shadow-[0_20px_80px_rgba(0,0,0,0.28)] ${
+        compact ? 'min-h-[180px]' : 'min-h-[220px] flex-col'
+      }`}
       style={{
         gridColumn: `span ${cell.colSpan}`,
         gridRow: `span ${cell.rowSpan}`
@@ -286,48 +289,131 @@ export function VideoCell({
         <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/55 to-transparent px-4 pb-4 pt-10 text-sm text-slate-200">
           {statusText}
         </div>
+
+        {compact && !isEmpty ? (
+          <div
+            data-testid={`video-cell-overlay-controls-${cell.id}`}
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 via-black/45 to-transparent px-3 pb-3 pt-12 opacity-0 transition duration-200 group-hover:opacity-100 group-focus-within:opacity-100"
+          >
+            <div className="pointer-events-auto grid gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onPlayChange(cell.id, !cell.playing)}
+                    className="rounded-full border border-white/20 bg-black/45 px-3 py-2 text-sm text-white backdrop-blur transition hover:border-accent"
+                  >
+                    {cell.playing ? 'Pause' : 'Play'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onMutedChange(cell.id, !cell.muted)}
+                    className="rounded-full border border-white/20 bg-black/45 px-3 py-2 text-sm text-white backdrop-blur transition hover:border-accent"
+                  >
+                    {cell.muted ? 'Unmute' : 'Mute'}
+                  </button>
+                  {showCompactLabels ? (
+                    <span className="text-xs text-slate-200">
+                      {formatTime(cell.currentTime)} {cell.duration ? `/ ${formatTime(cell.duration)}` : ''}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onChangeSource(cell.id)}
+                    className="rounded-full border border-white/20 bg-black/45 px-3 py-2 text-sm text-slate-100 backdrop-blur transition hover:border-accent hover:text-white"
+                  >
+                    Change
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onRemove(cell.id)}
+                    className="rounded-full border border-rose-300/40 bg-black/45 px-3 py-2 text-sm text-rose-100 backdrop-blur transition hover:bg-danger/20"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+
+              {!cell.isLive ? (
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={0}
+                    max={cell.duration ?? 0}
+                    step={0.1}
+                    value={Math.min(cell.currentTime, cell.duration ?? cell.currentTime)}
+                    onChange={(event) => {
+                      const video = videoRef.current;
+                      const nextTime = Number(event.target.value);
+                      if (video) {
+                        video.currentTime = nextTime;
+                      }
+                      onTimeChange(cell.id, nextTime, cell.duration);
+                    }}
+                    className="h-2 flex-1 cursor-pointer accent-accent"
+                  />
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={cell.volume}
+                    onChange={(event) => onVolumeChange(cell.id, Number(event.target.value))}
+                    aria-label={`Volume for ${cell.label}`}
+                    className="h-2 w-24 cursor-pointer accent-accent"
+                  />
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-success/60 bg-success/10 px-3 py-2 text-xs uppercase tracking-[0.28em] text-green-100">
+                  Live stream
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
       </div>
 
-      {!isEmpty ? (
+      {!compact && !isEmpty ? (
         <div className="grid gap-3 border-t border-border bg-panel px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onPlayChange(cell.id, !cell.playing)}
-              className="rounded-full border border-border px-3 py-2 text-sm text-white transition hover:border-accent"
-            >
-              {cell.playing ? 'Pause' : 'Play'}
-            </button>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onPlayChange(cell.id, !cell.playing)}
+                className="rounded-full border border-border px-3 py-2 text-sm text-white transition hover:border-accent"
+              >
+                {cell.playing ? 'Pause' : 'Play'}
+              </button>
 
-            {showLabels ? (
-              <span className="text-sm text-slate-300">
-                {formatTime(cell.currentTime)} {cell.duration ? `/ ${formatTime(cell.duration)}` : ''}
-              </span>
-            ) : null}
+              {showLabels ? (
+                <span className="text-sm text-slate-300">
+                  {formatTime(cell.currentTime)} {cell.duration ? `/ ${formatTime(cell.duration)}` : ''}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onChangeSource(cell.id)}
+                className="rounded-full border border-border px-3 py-2 text-sm text-slate-200 transition hover:border-accent hover:text-white"
+              >
+                {showLabels ? 'Change Video' : 'Change'}
+              </button>
+              <button
+                type="button"
+                onClick={() => onRemove(cell.id)}
+                className="rounded-full border border-danger/60 px-3 py-2 text-sm text-rose-200 transition hover:bg-danger/10"
+              >
+                Remove
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onChangeSource(cell.id)}
-              className="rounded-full border border-border px-3 py-2 text-sm text-slate-200 transition hover:border-accent hover:text-white"
-            >
-              {showLabels ? 'Change Video' : 'Change'}
-            </button>
-            <button
-              type="button"
-              onClick={() => onRemove(cell.id)}
-              className="rounded-full border border-danger/60 px-3 py-2 text-sm text-rose-200 transition hover:bg-danger/10"
-            >
-              Remove
-            </button>
-          </div>
-        </div>
-
-        {!cell.isLive ? (
-          <div className="flex items-center gap-3">
-            {!compact ? (
+          {!cell.isLive ? (
+            <div className="flex items-center gap-3">
               <input
                 type="range"
                 min={0}
@@ -344,26 +430,22 @@ export function VideoCell({
                 }}
                 className="h-2 flex-1 cursor-pointer accent-accent"
               />
-            ) : (
-              <div className="rounded-full border border-border px-3 py-2 text-xs text-slate-300">Seek</div>
-            )}
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-success/60 bg-success/10 px-3 py-2 text-xs uppercase tracking-[0.28em] text-green-100">
-            Live stream
-          </div>
-        )}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-success/60 bg-success/10 px-3 py-2 text-xs uppercase tracking-[0.28em] text-green-100">
+              Live stream
+            </div>
+          )}
 
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => onMutedChange(cell.id, !cell.muted)}
-            className="rounded-full border border-border px-3 py-2 text-sm text-white transition hover:border-accent"
-          >
-            {cell.muted ? 'Unmute' : 'Mute'}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => onMutedChange(cell.id, !cell.muted)}
+              className="rounded-full border border-border px-3 py-2 text-sm text-white transition hover:border-accent"
+            >
+              {cell.muted ? 'Unmute' : 'Mute'}
+            </button>
 
-          {!compact ? (
             <input
               type="range"
               min={0}
@@ -372,18 +454,21 @@ export function VideoCell({
               onChange={(event) => onVolumeChange(cell.id, Number(event.target.value))}
               className="h-2 w-full cursor-pointer accent-accent"
             />
-          ) : (
-            <div className="rounded-full border border-border px-3 py-2 text-xs text-slate-300">Vol {cell.volume}%</div>
-          )}
 
-          {showLabels ? <span className="min-w-10 text-right text-sm text-slate-300">{cell.volume}%</span> : null}
+            {showLabels ? <span className="min-w-10 text-right text-sm text-slate-300">{cell.volume}%</span> : null}
+          </div>
         </div>
-      </div>
-      ) : (
+      ) : !compact ? (
         <div className="border-t border-border bg-panel px-4 py-3 text-sm text-slate-400">
           This grid slot is empty.
         </div>
-      )}
+      ) : null}
+
+      {compact && isEmpty ? (
+        <div className="absolute inset-x-0 bottom-0 border-t border-white/10 bg-black/20 px-4 py-2 text-xs text-slate-300 backdrop-blur-sm">
+          Local file slot
+        </div>
+      ) : null}
 
       <div
         className="absolute inset-y-0 right-0 z-20 w-3 cursor-ew-resize opacity-0 transition group-hover:opacity-100"

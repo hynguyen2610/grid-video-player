@@ -7,8 +7,9 @@ interface GridConfigDialogProps {
   initialRows: number;
   initialColumns: number;
   initialLayoutMode: LayoutMode;
+  initialCompactMode: boolean;
   onClose: () => void;
-  onApply: (rows: number, columns: number, layoutMode: LayoutMode) => void;
+  onApply: (rows: number, columns: number, layoutMode: LayoutMode, compactMode: boolean) => void;
 }
 
 export function GridConfigDialog({
@@ -16,20 +17,23 @@ export function GridConfigDialog({
   initialRows,
   initialColumns,
   initialLayoutMode,
+  initialCompactMode,
   onClose,
   onApply
 }: GridConfigDialogProps) {
   const [rows, setRows] = useState(initialRows);
   const [columns, setColumns] = useState(initialColumns);
   const [layoutMode, setLayoutMode] = useState<LayoutMode>(initialLayoutMode);
+  const [compactMode, setCompactMode] = useState(initialCompactMode);
 
   useEffect(() => {
     if (open) {
       setRows(initialRows);
       setColumns(initialColumns);
       setLayoutMode(initialLayoutMode);
+      setCompactMode(initialCompactMode);
     }
-  }, [initialColumns, initialLayoutMode, initialRows, open]);
+  }, [initialColumns, initialCompactMode, initialLayoutMode, initialRows, open]);
 
   if (!open) {
     return null;
@@ -117,6 +121,39 @@ export function GridConfigDialog({
           </div>
         </div>
 
+        <div className="mt-5 grid gap-2">
+          <p className="text-sm text-slate-300">Player chrome</p>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setCompactMode(true)}
+              aria-pressed={compactMode}
+              className={`rounded-2xl border px-4 py-3 text-left text-sm transition ${
+                compactMode
+                  ? 'border-accent bg-accent/15 text-white'
+                  : 'border-border bg-canvas text-slate-300 hover:border-accent'
+              }`}
+            >
+              <span className="block font-medium">Compact</span>
+              <span className="mt-1 block text-xs text-slate-400">Overlay controls, more room for video.</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setCompactMode(false)}
+              aria-pressed={!compactMode}
+              className={`rounded-2xl border px-4 py-3 text-left text-sm transition ${
+                !compactMode
+                  ? 'border-accent bg-accent/15 text-white'
+                  : 'border-border bg-canvas text-slate-300 hover:border-accent'
+              }`}
+            >
+              <span className="block font-medium">Expanded</span>
+              <span className="mt-1 block text-xs text-slate-400">Keep dedicated control rows below video.</span>
+            </button>
+          </div>
+        </div>
+
         <div className="mt-6 flex justify-end gap-3">
           <button
             type="button"
@@ -128,7 +165,7 @@ export function GridConfigDialog({
           <button
             type="button"
             onClick={() => {
-              onApply(rows, columns, layoutMode);
+              onApply(rows, columns, layoutMode, compactMode);
               onClose();
             }}
             className="rounded-2xl bg-accent px-5 py-3 text-sm font-medium text-slate-900 transition hover:brightness-105"

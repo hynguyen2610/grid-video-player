@@ -344,4 +344,52 @@ describe('App UI behavior', () => {
     });
     expect(screen.getByTestId('app-shell').className).toContain('min-h-screen');
   });
+
+  it('defaults to compact mode and lets the user switch back to expanded chrome', async () => {
+    const user = userEvent.setup();
+    const bridge = createBridgeMock({
+      cells: [
+        {
+          id: 'cell-1',
+          colSpan: 1,
+          rowSpan: 1,
+          label: 'Front Door',
+          source: '/videos/front-door.mp4',
+          sourceType: 'local',
+          resolvedSource: 'http://127.0.0.1/local/front-door.mp4',
+          playing: false,
+          muted: false,
+          volume: 80,
+          currentTime: 0,
+          duration: 120,
+          isLive: false,
+          status: 'ready',
+          error: null
+        }
+      ],
+      presets: [],
+      recentSources: []
+    });
+    window.gridVideo = bridge;
+
+    render(<App />);
+
+    await screen.findByText('Front Door');
+
+    expect(useGridStore.getState().compactMode).toBe(true);
+    expect(screen.getByTestId('video-cell-overlay-controls-cell-1')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change Video' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Grid Config' }));
+    await user.click(screen.getByRole('button', { name: /Expanded/i }));
+    await user.click(screen.getByRole('button', { name: 'Apply Grid' }));
+
+    await waitFor(() => {
+      expect(useGridStore.getState().compactMode).toBe(false);
+    });
+
+    expect(screen.queryByTestId('video-cell-overlay-controls-cell-1')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mute' })).toBeInTheDocument();
+  });
 });

@@ -23,12 +23,14 @@ function App() {
     rows,
     tier,
     layoutMode,
+    compactMode,
     addCell,
     removeCell,
     replaceCellSource,
     setResolvedSource,
     setGridSize,
     setLayoutMode,
+    setCompactMode,
     setCellPlayback,
     setCellSpan,
     setCellMuted,
@@ -254,7 +256,6 @@ function App() {
     });
   }, [cells, hydrated]);
 
-  const compact = tier === 'dense';
   const activeCells = cells.filter((cell) => !!cell.source);
   const fitViewport = layoutMode === 'fit';
   const rootClassName = fitViewport
@@ -324,7 +325,7 @@ function App() {
             <VideoCell
               key={cell.id}
               cell={cell}
-              compact={compact}
+              compact={compactMode}
               isEmpty={!cell.source}
               maxColumns={columns}
               maxRows={rows}
@@ -355,10 +356,12 @@ function App() {
         initialRows={rows}
         initialColumns={columns}
         initialLayoutMode={layoutMode}
+        initialCompactMode={compactMode}
         onClose={() => setGridConfigOpen(false)}
-        onApply={(nextRows, nextColumns, nextLayoutMode) => {
+        onApply={(nextRows, nextColumns, nextLayoutMode, nextCompactMode) => {
           setGridSize(nextRows, nextColumns);
           setLayoutMode(nextLayoutMode);
+          setCompactMode(nextCompactMode);
         }}
       />
     </div>
