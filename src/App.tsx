@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
+import { GridConfigDialog } from './components/GridConfigDialog';
 import { Toolbar } from './components/Toolbar';
 import { VideoCell } from './components/VideoCell';
 import { getGridVideoApi } from './lib/grid-video-api';
-import { maxCells, selectSession, useGridStore } from './state/grid-store';
+import { selectSession, useGridStore } from './state/grid-store';
 import type { Cell, Preset, SourceType } from './shared/types';
 
 function App() {
+  const [gridConfigOpen, setGridConfigOpen] = useState(false);
   const videoMap = useRef(new Map<string, HTMLVideoElement>());
   const persistTimer = useRef<number | null>(null);
   const api = getGridVideoApi();
@@ -16,11 +18,13 @@ function App() {
     recentSources,
     hydrated,
     columns,
+    rows,
     tier,
     addCell,
     removeCell,
     replaceCellSource,
     setResolvedSource,
+    setGridSize,
     setCellPlayback,
     setCellMuted,
     setCellVolume,
@@ -77,7 +81,8 @@ function App() {
   }
 
   async function handleAddClick() {
-    if (cells.length >= maxCells) {
+    const emptySlotCount = cells.filter((cell) => !cell.source).length;
+    if (emptySlotCount === 0) {
       return;
     }
 
@@ -210,14 +215,16 @@ function App() {
   }, [cells, hydrated]);
 
   const compact = tier === 'dense';
+  const activeCells = cells.filter((cell) => !!cell.source);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,#1e2841,transparent_32%),linear-gradient(180deg,#0a0d14_0%,#0d1220_100%)] text-white">
       <Toolbar
         onAdd={handleAddClick}
-        onPlayAll={() => applyToAllVideos((cell) => setCellPlayback(cell.id, true))}
-        onPauseAll={() => applyToAllVideos((cell) => setCellPlayback(cell.id, false))}
-        onMuteAll={(muted) => applyToAllVideos((cell) => setCellMuted(cell.id, muted))}
+        onOpenGridConfig={() => setGridConfigOpen(true)}
+        onPlayAll={() => activeCells.forEach((cell) => setCellPlayback(cell.id, true))}
+        onPauseAll={() => activeCells.forEach((cell) => setCellPlayback(cell.id, false))}
+        onMuteAll={(muted) => activeCells.forEach((cell) => setCellMuted(cell.id, muted))}
         onSyncAll={syncPlayback}
         onScreenshotAll={() => void screenshotAll()}
         onSavePreset={() => void handleSavePreset()}
@@ -240,6 +247,8 @@ function App() {
               key={cell.id}
               cell={cell}
               compact={compact}
+              isEmpty={!cell.source}
+              onAddSource={(id) => void changeLocalVideo(id)}
               onPlayChange={setCellPlayback}
               onMutedChange={setCellMuted}
               onVolumeChange={setCellVolume}
@@ -250,31 +259,23 @@ function App() {
               registerVideo={registerVideo}
             />
           ))}
-
-          <button
-            data-testid="grid-add-tile"
-            type="button"
-            onClick={() => void handleAddClick()}
-            disabled={cells.length >= maxCells}
-            className="flex min-h-[220px] flex-col items-center justify-center rounded-[28px] border border-dashed border-accent/60 bg-card/40 p-8 text-center transition hover:border-accent hover:bg-card disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <div className="rounded-full border border-accent/70 px-5 py-4 text-3xl text-accent">+</div>
-            <p className="mt-5 text-lg font-medium text-white">
-              {cells.length >= maxCells ? 'Maximum cells reached' : 'Add Video'}
-            </p>
-            <p className="mt-2 max-w-xs text-sm text-slate-400">
-              Place a local file or stream source into the next slot. The grid reflows automatically.
-            </p>
-          </button>
         </div>
 
-        {cells.length === 0 ? (
+        {activeCells.length === 0 ? (
           <div className="mt-16 text-center text-slate-400">
-            <p className="text-xl text-white">The grid is empty.</p>
-            <p className="mt-2 text-sm">Use the add tile or toolbar to start building a playback wall.</p>
+            <p className="text-xl text-white">The wall is ready.</p>
+            <p className="mt-2 text-sm">Choose grid size from Grid Config and add local videos to any slot.</p>
           </div>
         ) : null}
       </main>
+
+      <GridConfigDialog
+        open={gridConfigOpen}
+        initialRows={rows}
+        initialColumns={columns}
+        onClose={() => setGridConfigOpen(false)}
+        onApply={(nextRows, nextColumns) => setGridSize(nextRows, nextColumns)}
+      />
     </div>
   );
 }

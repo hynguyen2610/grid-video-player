@@ -33,6 +33,8 @@ export interface Preset {
 }
 
 export interface GridSession {
+  gridColumns?: number;
+  gridRows?: number;
   cells: Cell[];
   presets: Preset[];
   recentSources: string[];

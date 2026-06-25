@@ -2,6 +2,7 @@ import type { Preset } from '../shared/types';
 
 interface ToolbarProps {
   onAdd: () => void;
+  onOpenGridConfig: () => void;
   onPlayAll: () => void;
   onPauseAll: () => void;
   onMuteAll: (muted: boolean) => void;
@@ -20,6 +21,7 @@ const buttonClassName =
 
 export function Toolbar({
   onAdd,
+  onOpenGridConfig,
   onPlayAll,
   onPauseAll,
   onMuteAll,
@@ -44,6 +46,7 @@ export function Toolbar({
           <button data-testid="toolbar-add-video" type="button" onClick={onAdd} className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-slate-900 transition hover:brightness-105">
             + Add Video
           </button>
+          <button type="button" onClick={onOpenGridConfig} className={buttonClassName}>Grid Config</button>
           <button type="button" onClick={onPlayAll} className={buttonClassName}>Play All</button>
           <button type="button" onClick={onPauseAll} className={buttonClassName}>Pause All</button>
           <button type="button" onClick={() => onMuteAll(true)} className={buttonClassName}>Mute All</button>

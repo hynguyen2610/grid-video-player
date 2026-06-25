@@ -13,6 +13,8 @@ interface DashPlayerHandle {
 interface VideoCellProps {
   cell: Cell;
   compact: boolean;
+  isEmpty: boolean;
+  onAddSource: (id: string) => void;
   onPlayChange: (id: string, playing: boolean) => void;
   onMutedChange: (id: string, muted: boolean) => void;
   onVolumeChange: (id: string, volume: number) => void;
@@ -41,6 +43,8 @@ function formatTime(value: number | null): string {
 export function VideoCell({
   cell,
   compact,
+  isEmpty,
+  onAddSource,
   onPlayChange,
   onMutedChange,
   onVolumeChange,
@@ -122,6 +126,10 @@ export function VideoCell({
   }, [cell.muted, cell.playing, cell.volume]);
 
   const statusText = useMemo(() => {
+    if (isEmpty) {
+      return 'Ready for a local file';
+    }
+
     if (cell.status === 'error') {
       return cell.error ?? 'Playback failed';
     }
@@ -166,8 +174,15 @@ export function VideoCell({
         ) : (
           <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_top,#25314d,transparent_56%)] p-6 text-center text-slate-400">
             <div>
-              <p className="text-lg font-medium text-white">{cell.label}</p>
-              <p className="mt-2 text-sm">Select a supported local file, HLS, DASH, or RTSP stream.</p>
+              <p className="text-lg font-medium text-white">{cell.label === 'Empty' ? 'Empty Slot' : cell.label}</p>
+              <p className="mt-2 text-sm">Add a local video file to this cell.</p>
+              <button
+                type="button"
+                onClick={() => onAddSource(cell.id)}
+                className="mt-5 rounded-full bg-accent px-4 py-2 text-sm font-medium text-slate-900 transition hover:brightness-105"
+              >
+                + Add Video
+              </button>
             </div>
           </div>
         )}
@@ -186,7 +201,8 @@ export function VideoCell({
         </div>
       </div>
 
-      <div className="grid gap-3 border-t border-border bg-panel px-4 py-3">
+      {!isEmpty ? (
+        <div className="grid gap-3 border-t border-border bg-panel px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <button
@@ -276,6 +292,11 @@ export function VideoCell({
           {showLabels ? <span className="min-w-10 text-right text-sm text-slate-300">{cell.volume}%</span> : null}
         </div>
       </div>
+      ) : (
+        <div className="border-t border-border bg-panel px-4 py-3 text-sm text-slate-400">
+          This grid slot is empty.
+        </div>
+      )}
     </div>
   );
 }

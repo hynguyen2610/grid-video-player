@@ -57,8 +57,8 @@ describe('App UI behavior', () => {
 
     render(<App />);
 
-    await screen.findByText('The grid is empty.');
-    await user.click(screen.getAllByText('Add Video')[0]);
+    await screen.findByText('The wall is ready.');
+    await user.click(screen.getByTestId('toolbar-add-video'));
 
     await waitFor(() => {
       expect(bridge.resolveSource).toHaveBeenCalledWith(
@@ -69,8 +69,8 @@ describe('App UI behavior', () => {
     });
 
     expect(await screen.findByText('Garage')).toBeInTheDocument();
-    expect(screen.getAllByText('Add Video').length).toBeGreaterThan(0);
-    expect(useGridStore.getState().cells).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /\+ Add Video|Add Video/ }).length).toBeGreaterThan(0);
+    expect(useGridStore.getState().cells.filter((cell) => cell.source)).toHaveLength(1);
     expect(useGridStore.getState().recentSources).toEqual(['/videos/garage.mp4']);
   });
 
@@ -125,7 +125,12 @@ describe('App UI behavior', () => {
     await user.click(screen.getByRole('button', { name: 'Mute All' }));
 
     await waitFor(() => {
-      expect(useGridStore.getState().cells.every((cell) => cell.muted)).toBe(true);
+      expect(
+        useGridStore
+          .getState()
+          .cells.filter((cell) => cell.source)
+          .every((cell) => cell.muted)
+      ).toBe(true);
     });
 
     const garageTitle = screen.getByText('Garage');

@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 import type { Cell, GridSession, Preset, SourceType } from '../shared/types';
-import { getGridColumns, getGridRows, getGridTier } from '../utils/grid';
+import { getGridTier } from '../utils/grid';
 
+const DEFAULT_GRID_COLUMNS = 3;
+const DEFAULT_GRID_ROWS = 3;
+const MAX_GRID_DIMENSION = 6;
 const MAX_CELLS = 36;
 
 function createEmptyCell(params: Partial<Cell> & Pick<Cell, 'id'>): Cell {
@@ -10,7 +13,7 @@ function createEmptyCell(params: Partial<Cell> & Pick<Cell, 'id'>): Cell {
     source: params.source ?? null,
     sourceType: params.sourceType ?? null,
     resolvedSource: params.resolvedSource ?? null,
-    label: params.label ?? 'Untitled',
+    label: params.label ?? 'Empty',
     playing: params.playing ?? false,
     muted: params.muted ?? false,
     volume: params.volume ?? 80,
@@ -22,11 +25,32 @@ function createEmptyCell(params: Partial<Cell> & Pick<Cell, 'id'>): Cell {
   };
 }
 
+function createGridCells(count: number, existingCells: Cell[] = []): Cell[] {
+  return Array.from({ length: count }, (_, index) => {
+    const existing = existingCells[index];
+    return existing ? createEmptyCell(existing) : createEmptyCell({ id: crypto.randomUUID() });
+  });
+}
+
+function clearCell(cell: Cell): Cell {
+  return createEmptyCell({
+    id: cell.id,
+    muted: false,
+    playing: false,
+    volume: 80
+  });
+}
+
+function clampGridDimension(value: number): number {
+  return Math.max(1, Math.min(MAX_GRID_DIMENSION, Math.floor(value)));
+}
+
 interface GridState extends GridSession {
   hydrated: boolean;
   columns: number;
   rows: number;
   tier: ReturnType<typeof getGridTier>;
+  setGridSize: (rows: number, columns: number) => void;
   addCell: (cell?: Partial<Cell>) => string | null;
   removeCell: (id: string) => void;
   replaceCellSource: (id: string, source: string, sourceType: SourceType, label?: string) => void;
@@ -45,74 +69,89 @@ interface GridState extends GridSession {
   hydrateSession: (session: GridSession | null) => void;
 }
 
+function deriveGrid(columns: number, rows: number) {
+  const safeColumns = clampGridDimension(columns);
+  const safeRows = clampGridDimension(rows);
+  const tier = getGridTier(safeColumns * safeRows);
+  return { columns: safeColumns, rows: safeRows, tier };
+}
+
 const initialGridState: Pick<
   GridState,
   'cells' | 'presets' | 'recentSources' | 'hydrated' | 'columns' | 'rows' | 'tier'
 > = {
-  cells: [],
+  cells: createGridCells(DEFAULT_GRID_COLUMNS * DEFAULT_GRID_ROWS),
   presets: [],
   recentSources: [],
   hydrated: false,
-  ...deriveGrid([])
+  ...deriveGrid(DEFAULT_GRID_COLUMNS, DEFAULT_GRID_ROWS)
 };
-
-function deriveGrid(cells: Cell[]) {
-  const columns = getGridColumns(cells.length || 1);
-  const rows = getGridRows(cells.length || 1);
-  const tier = getGridTier(cells.length || 1);
-  return { columns, rows, tier };
-}
 
 export const useGridStore = create<GridState>((set, get) => ({
   ...initialGridState,
+  setGridSize: (rows, columns) => {
+    const nextRows = clampGridDimension(rows);
+    const nextColumns = clampGridDimension(columns);
+    const count = Math.min(nextRows * nextColumns, MAX_CELLS);
+    set({
+      cells: createGridCells(count, get().cells.slice(0, count)),
+      ...deriveGrid(nextColumns, nextRows)
+    });
+  },
   addCell: (cell) => {
-    if (get().cells.length >= MAX_CELLS) {
+    const emptyCell = get().cells.find((entry) => !entry.source);
+    if (!emptyCell) {
       return null;
     }
 
-    const id = cell?.id ?? crypto.randomUUID();
-    const cells = [...get().cells, createEmptyCell({ id, ...cell })];
-    set({ cells, ...deriveGrid(cells) });
+    const id = emptyCell.id;
+    set({
+      cells: get().cells.map((entry) =>
+        entry.id === id ? createEmptyCell({ ...entry, ...cell, id }) : entry
+      )
+    });
     return id;
   },
   removeCell: (id) => {
-    const cells = get().cells.filter((cell) => cell.id !== id);
-    set({ cells, ...deriveGrid(cells) });
+    set({
+      cells: get().cells.map((cell) => (cell.id === id ? clearCell(cell) : cell))
+    });
   },
   replaceCellSource: (id, source, sourceType, label) => {
-    const cells = get().cells.map((cell) =>
-      cell.id === id
-        ? {
-            ...cell,
-            source,
-            sourceType,
-            resolvedSource: null,
-            label: label ?? cell.label,
-            currentTime: 0,
-            duration: null,
-            status: 'loading' as const,
-            error: null,
-            isLive: sourceType !== 'local'
-          }
-        : cell
-    );
-
-    set({ cells });
+    set({
+      cells: get().cells.map((cell) =>
+        cell.id === id
+          ? {
+              ...cell,
+              source,
+              sourceType,
+              resolvedSource: null,
+              label: label ?? cell.label,
+              currentTime: 0,
+              duration: null,
+              status: 'loading' as const,
+              error: null,
+              isLive: sourceType !== 'local',
+              playing: false
+            }
+          : cell
+      )
+    });
   },
   setResolvedSource: (id, resolvedSource, isLive) => {
-    const cells = get().cells.map((cell) =>
-      cell.id === id
-        ? {
-            ...cell,
-            resolvedSource,
-            isLive,
-            status: 'ready' as const,
-            error: null
-          }
-        : cell
-    );
-
-    set({ cells });
+    set({
+      cells: get().cells.map((cell) =>
+        cell.id === id
+          ? {
+              ...cell,
+              resolvedSource,
+              isLive,
+              status: 'ready' as const,
+              error: null
+            }
+          : cell
+      )
+    });
   },
   setCellPlayback: (id, playing) => {
     set({
@@ -144,13 +183,12 @@ export const useGridStore = create<GridState>((set, get) => ({
     });
   },
   savePreset: (name) => {
-    const cells = get().cells;
     const preset: Preset = {
       id: crypto.randomUUID(),
       name,
-      columns: getGridColumns(cells.length || 1),
-      rows: getGridRows(cells.length || 1),
-      cells: cells.map((cell, index) => ({
+      columns: get().columns,
+      rows: get().rows,
+      cells: get().cells.map((cell, index) => ({
         index,
         label: cell.label,
         source: cell.source,
@@ -165,18 +203,22 @@ export const useGridStore = create<GridState>((set, get) => ({
     set({ presets: get().presets.filter((preset) => preset.id !== id) });
   },
   loadPreset: (preset) => {
-    const cells = preset.cells
-      .filter((cell) => cell.source)
-      .map((cell) =>
-        createEmptyCell({
-          id: crypto.randomUUID(),
-          label: cell.label,
-          source: cell.source,
-          sourceType: cell.sourceType ?? null
-        })
-      );
+    const count = Math.min(preset.columns * preset.rows, MAX_CELLS);
+    const slotMap = new Map(preset.cells.map((cell) => [cell.index, cell]));
+    const cells = Array.from({ length: count }, (_, index) => {
+      const presetCell = slotMap.get(index);
+      return createEmptyCell({
+        id: crypto.randomUUID(),
+        label: presetCell?.label ?? 'Empty',
+        source: presetCell?.source ?? null,
+        sourceType: presetCell?.sourceType ?? null
+      });
+    });
 
-    set({ cells, ...deriveGrid(cells) });
+    set({
+      cells,
+      ...deriveGrid(preset.columns, preset.rows)
+    });
   },
   importPreset: (preset) => {
     set({
@@ -194,18 +236,23 @@ export const useGridStore = create<GridState>((set, get) => ({
       return;
     }
 
+    const rows = session.gridRows ?? DEFAULT_GRID_ROWS;
+    const columns = session.gridColumns ?? DEFAULT_GRID_COLUMNS;
+    const count = Math.min(rows * columns, MAX_CELLS);
     set({
-      cells: session.cells.map((cell) => createEmptyCell(cell)),
+      cells: createGridCells(count, session.cells.slice(0, count)),
       presets: session.presets,
       recentSources: session.recentSources,
       hydrated: true,
-      ...deriveGrid(session.cells)
+      ...deriveGrid(columns, rows)
     });
   }
 }));
 
 export function selectSession(state: GridState): GridSession {
   return {
+    gridColumns: state.columns,
+    gridRows: state.rows,
     cells: state.cells,
     presets: state.presets,
     recentSources: state.recentSources
@@ -213,7 +260,12 @@ export function selectSession(state: GridState): GridSession {
 }
 
 export function resetGridStore() {
-  useGridStore.setState(initialGridState);
+  useGridStore.setState({
+    ...initialGridState,
+    cells: createGridCells(DEFAULT_GRID_COLUMNS * DEFAULT_GRID_ROWS)
+  });
 }
 
-export const maxCells = MAX_CELLS;
+export const defaultGridColumns = DEFAULT_GRID_COLUMNS;
+export const defaultGridRows = DEFAULT_GRID_ROWS;
+export const maxGridDimension = MAX_GRID_DIMENSION;
