@@ -28,6 +28,7 @@ function App() {
     setResolvedSource,
     setGridSize,
     setCellPlayback,
+    setCellSpan,
     setCellMuted,
     setCellVolume,
     setCellTime,
@@ -293,7 +294,9 @@ function App() {
         <div
           className="grid gap-3"
           style={{
-            gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`
+            gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+            gridAutoFlow: 'dense',
+            gridAutoRows: isFullscreen ? 'minmax(160px, 1fr)' : 'minmax(220px, 1fr)'
           }}
         >
           {cells.map((cell) => (
@@ -302,7 +305,10 @@ function App() {
               cell={cell}
               compact={compact}
               isEmpty={!cell.source}
+              maxColumns={columns}
+              maxRows={rows}
               onAddSource={(id) => void changeLocalVideo(id)}
+              onResizeCell={setCellSpan}
               onPlayChange={setCellPlayback}
               onMutedChange={setCellMuted}
               onVolumeChange={setCellVolume}

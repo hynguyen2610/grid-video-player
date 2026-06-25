@@ -2,6 +2,8 @@ export type SourceType = 'local' | 'hls' | 'dash' | 'rtsp';
 
 export interface Cell {
   id: string;
+  colSpan: number;
+  rowSpan: number;
   source: string | null;
   sourceType: SourceType | null;
   resolvedSource: string | null;
@@ -18,6 +20,8 @@ export interface Cell {
 
 export interface PresetCell {
   index: number;
+  colSpan?: number;
+  rowSpan?: number;
   label: string;
   source: string | null;
   sourceType?: SourceType | null;

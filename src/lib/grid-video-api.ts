@@ -12,6 +12,17 @@ import { inferSourceType } from '../utils/source';
 
 const SESSION_STORAGE_KEY = 'grid-video:web-session';
 
+interface FilePickerWindow extends Window {
+  showOpenFilePicker?: (options?: {
+    multiple?: boolean;
+    excludeAcceptAllOption?: boolean;
+    types?: Array<{
+      description?: string;
+      accept: Record<string, string[]>;
+    }>;
+  }) => Promise<Array<{ getFile: () => Promise<File> }>>;
+}
+
 function cloneSession(session: GridSession): GridSession {
   return {
     cells: session.cells.map((cell) => ({ ...cell })),
@@ -82,6 +93,41 @@ function pickFile(options: { accept: string; multiple?: boolean }): Promise<File
   });
 }
 
+async function pickLocalVideoFile(): Promise<File | null> {
+  const pickerWindow = window as FilePickerWindow;
+
+  if (pickerWindow.showOpenFilePicker) {
+    try {
+      const [handle] = await pickerWindow.showOpenFilePicker({
+        multiple: false,
+        excludeAcceptAllOption: true,
+        types: [
+          {
+            description: 'Video Files',
+            accept: {
+              'video/mp4': ['.mp4'],
+              'video/webm': ['.webm'],
+              'video/quicktime': ['.mov'],
+              'video/x-matroska': ['.mkv'],
+              'video/x-msvideo': ['.avi']
+            }
+          }
+        ]
+      });
+
+      return (await handle?.getFile()) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  const files = await pickFile({
+    accept: '.mp4,.mkv,.mov,.avi,.webm,video/mp4,video/webm,video/quicktime,video/x-matroska'
+  });
+
+  return files?.[0] ?? null;
+}
+
 function getLabelFromSource(source: string): string {
   if (source.startsWith('blob:')) {
     return 'Local Video';
@@ -100,10 +146,7 @@ export const browserGridVideoApi: StorageApi = {
     persistSession(session);
   },
   async selectLocalVideo() {
-    const files = await pickFile({
-      accept: '.mp4,.mkv,.mov,.avi,.webm,video/mp4,video/webm,video/quicktime,video/x-matroska'
-    });
-    const file = files?.[0];
+    const file = await pickLocalVideoFile();
     if (!file) {
       return null;
     }

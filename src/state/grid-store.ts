@@ -10,6 +10,8 @@ const MAX_CELLS = 36;
 function createEmptyCell(params: Partial<Cell> & Pick<Cell, 'id'>): Cell {
   return {
     id: params.id,
+    colSpan: params.colSpan ?? 1,
+    rowSpan: params.rowSpan ?? 1,
     source: params.source ?? null,
     sourceType: params.sourceType ?? null,
     resolvedSource: params.resolvedSource ?? null,
@@ -35,6 +37,8 @@ function createGridCells(count: number, existingCells: Cell[] = []): Cell[] {
 function clearCell(cell: Cell): Cell {
   return createEmptyCell({
     id: cell.id,
+    colSpan: 1,
+    rowSpan: 1,
     muted: false,
     playing: false,
     volume: 80
@@ -56,6 +60,7 @@ interface GridState extends GridSession {
   replaceCellSource: (id: string, source: string, sourceType: SourceType, label?: string) => void;
   setResolvedSource: (id: string, resolvedSource: string, isLive: boolean) => void;
   setCellPlayback: (id: string, playing: boolean) => void;
+  setCellSpan: (id: string, colSpan: number, rowSpan: number) => void;
   setCellMuted: (id: string, muted: boolean) => void;
   setCellVolume: (id: string, volume: number) => void;
   setCellTime: (id: string, currentTime: number, duration: number | null) => void;
@@ -93,8 +98,15 @@ export const useGridStore = create<GridState>((set, get) => ({
     const nextRows = clampGridDimension(rows);
     const nextColumns = clampGridDimension(columns);
     const count = Math.min(nextRows * nextColumns, MAX_CELLS);
+    const trimmedCells = get().cells.slice(0, count).map((cell) =>
+      createEmptyCell({
+        ...cell,
+        colSpan: Math.min(cell.colSpan, nextColumns),
+        rowSpan: Math.min(cell.rowSpan, nextRows)
+      })
+    );
     set({
-      cells: createGridCells(count, get().cells.slice(0, count)),
+      cells: createGridCells(count, trimmedCells),
       ...deriveGrid(nextColumns, nextRows)
     });
   },
@@ -158,6 +170,21 @@ export const useGridStore = create<GridState>((set, get) => ({
       cells: get().cells.map((cell) => (cell.id === id ? { ...cell, playing } : cell))
     });
   },
+  setCellSpan: (id, colSpan, rowSpan) => {
+    const maxColumns = get().columns;
+    const maxRows = get().rows;
+    set({
+      cells: get().cells.map((cell) =>
+        cell.id === id
+          ? {
+              ...cell,
+              colSpan: Math.max(1, Math.min(maxColumns, Math.round(colSpan))),
+              rowSpan: Math.max(1, Math.min(maxRows, Math.round(rowSpan)))
+            }
+          : cell
+      )
+    });
+  },
   setCellMuted: (id, muted) => {
     set({
       cells: get().cells.map((cell) => (cell.id === id ? { ...cell, muted } : cell))
@@ -190,6 +217,8 @@ export const useGridStore = create<GridState>((set, get) => ({
       rows: get().rows,
       cells: get().cells.map((cell, index) => ({
         index,
+        colSpan: cell.colSpan,
+        rowSpan: cell.rowSpan,
         label: cell.label,
         source: cell.source,
         sourceType: cell.sourceType
@@ -209,6 +238,8 @@ export const useGridStore = create<GridState>((set, get) => ({
       const presetCell = slotMap.get(index);
       return createEmptyCell({
         id: crypto.randomUUID(),
+        colSpan: Math.min(presetCell?.colSpan ?? 1, preset.columns),
+        rowSpan: Math.min(presetCell?.rowSpan ?? 1, preset.rows),
         label: presetCell?.label ?? 'Empty',
         source: presetCell?.source ?? null,
         sourceType: presetCell?.sourceType ?? null

@@ -14,7 +14,10 @@ interface VideoCellProps {
   cell: Cell;
   compact: boolean;
   isEmpty: boolean;
+  maxColumns: number;
+  maxRows: number;
   onAddSource: (id: string) => void;
+  onResizeCell: (id: string, colSpan: number, rowSpan: number) => void;
   onPlayChange: (id: string, playing: boolean) => void;
   onMutedChange: (id: string, muted: boolean) => void;
   onVolumeChange: (id: string, volume: number) => void;
@@ -44,7 +47,10 @@ export function VideoCell({
   cell,
   compact,
   isEmpty,
+  maxColumns,
+  maxRows,
   onAddSource,
+  onResizeCell,
   onPlayChange,
   onMutedChange,
   onVolumeChange,
@@ -58,6 +64,15 @@ export function VideoCell({
   const width = useElementWidth(container);
   const showLabels = width > 320 && !compact;
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const resizeStateRef = useRef<{
+    startX: number;
+    startY: number;
+    startColSpan: number;
+    startRowSpan: number;
+    baseWidth: number;
+    baseHeight: number;
+    mode: 'width' | 'height' | 'both';
+  } | null>(null);
 
   useEffect(() => {
     registerVideo(cell.id, videoRef.current);
@@ -141,11 +156,82 @@ export function VideoCell({
     return cell.sourceType ? cell.sourceType.toUpperCase() : 'No source';
   }, [cell.error, cell.sourceType, cell.status]);
 
+  function beginResize(
+    event: React.MouseEvent<HTMLDivElement>,
+    mode: 'width' | 'height' | 'both'
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const element = container;
+    if (!element) {
+      return;
+    }
+
+    const rect = element.getBoundingClientRect();
+    resizeStateRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      startColSpan: cell.colSpan,
+      startRowSpan: cell.rowSpan,
+      baseWidth: rect.width / Math.max(cell.colSpan, 1),
+      baseHeight: rect.height / Math.max(cell.rowSpan, 1),
+      mode
+    };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const resizeState = resizeStateRef.current;
+      if (!resizeState) {
+        return;
+      }
+
+      let nextColSpan = resizeState.startColSpan;
+      let nextRowSpan = resizeState.startRowSpan;
+
+      if (resizeState.mode === 'width' || resizeState.mode === 'both') {
+        const deltaX = moveEvent.clientX - resizeState.startX;
+        nextColSpan = Math.max(
+          1,
+          Math.min(
+            maxColumns,
+            Math.round((resizeState.startColSpan * resizeState.baseWidth + deltaX) / resizeState.baseWidth)
+          )
+        );
+      }
+
+      if (resizeState.mode === 'height' || resizeState.mode === 'both') {
+        const deltaY = moveEvent.clientY - resizeState.startY;
+        nextRowSpan = Math.max(
+          1,
+          Math.min(
+            maxRows,
+            Math.round((resizeState.startRowSpan * resizeState.baseHeight + deltaY) / resizeState.baseHeight)
+          )
+        );
+      }
+
+      onResizeCell(cell.id, nextColSpan, nextRowSpan);
+    };
+
+    const handleMouseUp = () => {
+      resizeStateRef.current = null;
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }
+
   return (
     <div
       ref={setContainer}
       data-testid={`video-cell-${cell.id}`}
-      className="group flex min-h-[220px] flex-col overflow-hidden rounded-[28px] border border-border bg-card shadow-[0_20px_80px_rgba(0,0,0,0.28)]"
+      className="group relative flex min-h-[220px] flex-col overflow-hidden rounded-[28px] border border-border bg-card shadow-[0_20px_80px_rgba(0,0,0,0.28)]"
+      style={{
+        gridColumn: `span ${cell.colSpan}`,
+        gridRow: `span ${cell.rowSpan}`
+      }}
     >
       <div className="relative flex-1 overflow-hidden bg-slate-950">
         {cell.resolvedSource ? (
@@ -298,6 +384,19 @@ export function VideoCell({
           This grid slot is empty.
         </div>
       )}
+
+      <div
+        className="absolute inset-y-0 right-0 z-20 w-3 cursor-ew-resize opacity-0 transition group-hover:opacity-100"
+        onMouseDown={(event) => beginResize(event, 'width')}
+      />
+      <div
+        className="absolute inset-x-0 bottom-0 z-20 h-3 cursor-ns-resize opacity-0 transition group-hover:opacity-100"
+        onMouseDown={(event) => beginResize(event, 'height')}
+      />
+      <div
+        className="absolute bottom-0 right-0 z-30 h-5 w-5 cursor-nwse-resize opacity-0 transition group-hover:opacity-100"
+        onMouseDown={(event) => beginResize(event, 'both')}
+      />
     </div>
   );
 }

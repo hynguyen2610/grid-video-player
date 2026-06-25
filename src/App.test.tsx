@@ -85,6 +85,8 @@ describe('App UI behavior', () => {
       cells: [
         {
           id: 'cell-1',
+          colSpan: 1,
+          rowSpan: 1,
           label: 'Front Door',
           source: '/videos/front-door.mp4',
           sourceType: 'local',
@@ -100,6 +102,8 @@ describe('App UI behavior', () => {
         },
         {
           id: 'cell-2',
+          colSpan: 1,
+          rowSpan: 1,
           label: 'Garage',
           source: '/videos/garage.mp4',
           sourceType: 'local',
@@ -301,5 +305,21 @@ describe('App UI behavior', () => {
     });
     expect(screen.queryByRole('button', { name: 'Fullscreen' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Exit Fullscreen' })).toBeInTheDocument();
+  });
+
+  it('stores resized grid spans without affecting the video source assignment model', async () => {
+    const bridge = createBridgeMock();
+    window.gridVideo = bridge;
+
+    render(<App />);
+
+    const targetCell = useGridStore.getState().cells[0];
+    useGridStore.getState().setCellSpan(targetCell.id, 2, 3);
+
+    await waitFor(() => {
+      const updatedCell = useGridStore.getState().cells.find((cell) => cell.id === targetCell.id);
+      expect(updatedCell?.colSpan).toBe(2);
+      expect(updatedCell?.rowSpan).toBe(3);
+    });
   });
 });
