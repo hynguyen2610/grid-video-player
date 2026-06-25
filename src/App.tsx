@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { GridConfigDialog } from './components/GridConfigDialog';
 import { Toolbar } from './components/Toolbar';
+import { VideoLibrarySidebar } from './components/VideoLibrarySidebar';
 import { VideoCell } from './components/VideoCell';
 import { getGridVideoApi } from './lib/grid-video-api';
 import { selectSession, useGridStore } from './state/grid-store';
-import type { Cell, Preset, SourceType } from './shared/types';
+import type { Cell, FolderVideoSelection, Preset, SourceType } from './shared/types';
 
 function App() {
   const [gridConfigOpen, setGridConfigOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [libraryVideos, setLibraryVideos] = useState<FolderVideoSelection[]>([]);
   const appRootRef = useRef<HTMLDivElement | null>(null);
   const videoMap = useRef(new Map<string, HTMLVideoElement>());
   const persistTimer = useRef<number | null>(null);
@@ -84,9 +87,9 @@ function App() {
 
   async function assignSourceToCell(
     cellId: string,
-    payload: { source: string; sourceType: SourceType; label: string }
+    payload: { source: string; sourceType: SourceType; label: string; sourceKey?: string | null }
   ) {
-    replaceCellSource(cellId, payload.source, payload.sourceType, payload.label);
+    replaceCellSource(cellId, payload.source, payload.sourceType, payload.label, payload.sourceKey);
     rememberRecentSource(payload.source);
     try {
       const resolved = await api.resolveSource(cellId, payload.source, payload.sourceType);
@@ -126,7 +129,8 @@ function App() {
       await assignSourceToCell(id, {
         source: selection.source,
         sourceType: 'local',
-        label: selection.label || `Cell ${cells.length + 1}`
+        label: selection.label || `Cell ${cells.length + 1}`,
+        sourceKey: selection.sourceKey
       });
     }
   }
@@ -149,8 +153,31 @@ function App() {
     await assignSourceToCell(id, {
       source: selection.source,
       sourceType: 'local',
-      label: selection.label
+      label: selection.label,
+      sourceKey: selection.sourceKey
     });
+  }
+
+  async function handleDropVideo(cellId: string, payload: string) {
+    try {
+      const item = JSON.parse(payload) as FolderVideoSelection;
+      await assignSourceToCell(cellId, {
+        source: item.source,
+        sourceType: 'local',
+        label: item.label,
+        sourceKey: item.sourceKey ?? item.source
+      });
+    } catch {
+      return;
+    }
+  }
+
+  async function handlePickFolder() {
+    const selected = await api.selectVideoFolder();
+    setLibraryVideos(selected);
+    if (selected.length > 0) {
+      setSidebarOpen(true);
+    }
   }
 
   function registerVideo(id: string, element: HTMLVideoElement | null) {
@@ -251,23 +278,33 @@ function App() {
       void assignSourceToCell(cell.id, {
         source: cell.source!,
         sourceType: cell.sourceType!,
-        label: cell.label
+        label: cell.label,
+        sourceKey: cell.sourceKey
       });
     });
   }, [cells, hydrated]);
 
   const activeCells = cells.filter((cell) => !!cell.source);
+  const activeSourceCounts = activeCells.reduce<Record<string, number>>((counts, cell) => {
+    const key = cell.sourceKey ?? cell.source ?? '';
+    if (!key) {
+      return counts;
+    }
+
+    counts[key] = (counts[key] ?? 0) + 1;
+    return counts;
+  }, {});
   const fitViewport = layoutMode === 'fit';
   const rootClassName = fitViewport
     ? 'flex h-screen flex-col overflow-hidden bg-[radial-gradient(circle_at_top,#1e2841,transparent_32%),linear-gradient(180deg,#0a0d14_0%,#0d1220_100%)] text-white'
-    : 'min-h-screen bg-[radial-gradient(circle_at_top,#1e2841,transparent_32%),linear-gradient(180deg,#0a0d14_0%,#0d1220_100%)] text-white';
+    : 'flex min-h-screen flex-col bg-[radial-gradient(circle_at_top,#1e2841,transparent_32%),linear-gradient(180deg,#0a0d14_0%,#0d1220_100%)] text-white';
   const mainClassName = fitViewport
     ? isFullscreen
-      ? 'flex-1 overflow-hidden p-3'
-      : 'flex-1 overflow-hidden p-5'
+      ? 'flex-1 min-w-0 overflow-hidden p-3'
+      : 'flex-1 min-w-0 overflow-hidden p-5'
     : isFullscreen
-      ? 'p-3'
-      : 'p-5';
+      ? 'min-w-0 p-3'
+      : 'min-w-0 p-5';
 
   return (
     <div
@@ -278,9 +315,11 @@ function App() {
       {!isFullscreen ? (
         <Toolbar
           onAdd={handleAddClick}
+          onToggleSidebar={() => setSidebarOpen((value) => !value)}
           onOpenGridConfig={() => setGridConfigOpen(true)}
           onToggleFullscreen={() => void toggleFullscreen()}
           isFullscreen={isFullscreen}
+          sidebarOpen={sidebarOpen}
           onPlayAll={() => activeCells.forEach((cell) => setCellPlayback(cell.id, true))}
           onPauseAll={() => activeCells.forEach((cell) => setCellPlayback(cell.id, false))}
           onMuteAll={(muted) => activeCells.forEach((cell) => setCellMuted(cell.id, muted))}
@@ -305,51 +344,64 @@ function App() {
         </button>
       ) : null}
 
-      <main data-testid="app-main" className={mainClassName}>
-        <div
-          data-testid="video-grid"
-          className={`grid gap-3 ${fitViewport ? 'h-full' : ''}`}
-          style={{
-            gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-            gridAutoFlow: 'dense',
-            ...(fitViewport
-              ? {
-                  gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`
-                }
-              : {
-                  gridAutoRows: isFullscreen ? 'minmax(160px, 1fr)' : 'minmax(220px, 1fr)'
-                })
-          }}
-        >
-          {cells.map((cell) => (
-            <VideoCell
-              key={cell.id}
-              cell={cell}
-              compact={compactMode}
-              isEmpty={!cell.source}
-              maxColumns={columns}
-              maxRows={rows}
-              onAddSource={(id) => void changeLocalVideo(id)}
-              onResizeCell={setCellSpan}
-              onPlayChange={setCellPlayback}
-              onMutedChange={setCellMuted}
-              onVolumeChange={setCellVolume}
-              onTimeChange={setCellTime}
-              onStatusChange={setCellStatus}
-              onChangeSource={(id) => void changeLocalVideo(id)}
-              onRemove={handleRemove}
-              registerVideo={registerVideo}
-            />
-          ))}
-        </div>
-
-        {activeCells.length === 0 ? (
-          <div className="mt-16 text-center text-slate-400">
-            <p className="text-xl text-white">The wall is ready.</p>
-            <p className="mt-2 text-sm">Choose grid size from Grid Config and add local videos to any slot.</p>
-          </div>
+      <div className={`${fitViewport ? 'flex min-h-0 flex-1' : 'flex flex-1'}`}>
+        {!isFullscreen ? (
+          <VideoLibrarySidebar
+            open={sidebarOpen}
+            videos={libraryVideos}
+            activeCounts={activeSourceCounts}
+            onToggle={() => setSidebarOpen((value) => !value)}
+            onPickFolder={() => void handlePickFolder()}
+          />
         ) : null}
-      </main>
+
+        <main data-testid="app-main" className={mainClassName}>
+          <div
+            data-testid="video-grid"
+            className={`grid gap-3 ${fitViewport ? 'h-full' : ''}`}
+            style={{
+              gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+              gridAutoFlow: 'dense',
+              ...(fitViewport
+                ? {
+                    gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`
+                  }
+                : {
+                    gridAutoRows: isFullscreen ? 'minmax(160px, 1fr)' : 'minmax(220px, 1fr)'
+                  })
+            }}
+          >
+            {cells.map((cell) => (
+              <VideoCell
+                key={cell.id}
+                cell={cell}
+                compact={compactMode}
+                isEmpty={!cell.source}
+                maxColumns={columns}
+                maxRows={rows}
+                onAddSource={(id) => void changeLocalVideo(id)}
+                onDropSource={(id, payload) => void handleDropVideo(id, payload)}
+                onResizeCell={setCellSpan}
+                onPlayChange={setCellPlayback}
+                onMutedChange={setCellMuted}
+                onVolumeChange={setCellVolume}
+                onTimeChange={setCellTime}
+                onStatusChange={setCellStatus}
+                onChangeSource={(id) => void changeLocalVideo(id)}
+                onRemove={handleRemove}
+                registerVideo={registerVideo}
+              />
+            ))}
+          </div>
+
+          {activeCells.length === 0 ? (
+            <div className="mt-16 text-center text-slate-400">
+              <p className="text-xl text-white">The wall is ready.</p>
+              <p className="mt-2 text-sm">Choose grid size, pick a folder, and drag videos into any slot.</p>
+            </div>
+          ) : null}
+        </main>
+      </div>
 
       <GridConfigDialog
         open={gridConfigOpen}

@@ -15,6 +15,7 @@ function createEmptyCell(params: Partial<Cell> & Pick<Cell, 'id'>): Cell {
     colSpan: params.colSpan ?? 1,
     rowSpan: params.rowSpan ?? 1,
     source: params.source ?? null,
+    sourceKey: params.sourceKey ?? null,
     sourceType: params.sourceType ?? null,
     resolvedSource: params.resolvedSource ?? null,
     label: params.label ?? 'Empty',
@@ -63,7 +64,13 @@ interface GridState extends GridSession {
   setCompactMode: (compactMode: boolean) => void;
   addCell: (cell?: Partial<Cell>) => string | null;
   removeCell: (id: string) => void;
-  replaceCellSource: (id: string, source: string, sourceType: SourceType, label?: string) => void;
+  replaceCellSource: (
+    id: string,
+    source: string,
+    sourceType: SourceType,
+    label?: string,
+    sourceKey?: string | null
+  ) => void;
   setResolvedSource: (id: string, resolvedSource: string, isLive: boolean) => void;
   setCellPlayback: (id: string, playing: boolean) => void;
   setCellSpan: (id: string, colSpan: number, rowSpan: number) => void;
@@ -144,13 +151,14 @@ export const useGridStore = create<GridState>((set, get) => ({
       cells: get().cells.map((cell) => (cell.id === id ? clearCell(cell) : cell))
     });
   },
-  replaceCellSource: (id, source, sourceType, label) => {
+  replaceCellSource: (id, source, sourceType, label, sourceKey = null) => {
     set({
       cells: get().cells.map((cell) =>
         cell.id === id
           ? {
               ...cell,
               source,
+              sourceKey,
               sourceType,
               resolvedSource: null,
               label: label ?? cell.label,

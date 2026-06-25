@@ -1,5 +1,6 @@
 import type {
   Cell,
+  FolderVideoSelection,
   GridSession,
   LocalVideoSelection,
   Preset,
@@ -21,10 +22,17 @@ interface FilePickerWindow extends Window {
       accept: Record<string, string[]>;
     }>;
   }) => Promise<Array<{ getFile: () => Promise<File> }>>;
+  showDirectoryPicker?: () => Promise<{
+    values: () => AsyncIterable<{ kind: string; getFile: () => Promise<File>; name: string }>;
+  }>;
 }
 
 function cloneSession(session: GridSession): GridSession {
   return {
+    gridColumns: session.gridColumns,
+    gridRows: session.gridRows,
+    layoutMode: session.layoutMode,
+    compactMode: session.compactMode,
     cells: session.cells.map((cell) => ({ ...cell })),
     presets: session.presets.map((preset) => ({
       ...preset,
@@ -59,6 +67,10 @@ function restoreSession(raw: string | null): GridSession | null {
   try {
     const parsed = JSON.parse(raw) as GridSession;
     return {
+      gridColumns: parsed.gridColumns,
+      gridRows: parsed.gridRows,
+      layoutMode: parsed.layoutMode,
+      compactMode: parsed.compactMode,
       cells: parsed.cells.map(sanitizeRestoredCell),
       presets: parsed.presets ?? [],
       recentSources: parsed.recentSources ?? []
@@ -128,6 +140,53 @@ async function pickLocalVideoFile(): Promise<File | null> {
   return files?.[0] ?? null;
 }
 
+function isVideoFile(file: File): boolean {
+  return (
+    file.type.startsWith('video/') ||
+    /\.(mp4|mkv|mov|avi|webm|m4v)$/i.test(file.name)
+  );
+}
+
+async function pickVideoFolderFiles(): Promise<File[]> {
+  const pickerWindow = window as FilePickerWindow;
+
+  if (pickerWindow.showDirectoryPicker) {
+    try {
+      const handle = await pickerWindow.showDirectoryPicker();
+      const files: File[] = [];
+
+      for await (const entry of handle.values()) {
+        if (entry.kind !== 'file') {
+          continue;
+        }
+
+        const file = await entry.getFile();
+        if (isVideoFile(file)) {
+          files.push(file);
+        }
+      }
+
+      return files;
+    } catch {
+      return [];
+    }
+  }
+
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.setAttribute('webkitdirectory', '');
+    input.multiple = true;
+    input.accept = '.mp4,.mkv,.mov,.avi,.webm,.m4v,video/*';
+    input.onchange = () => {
+      const files = Array.from(input.files ?? []).filter(isVideoFile);
+      resolve(files);
+    };
+    input.oncancel = () => resolve([]);
+    input.click();
+  });
+}
+
 function getLabelFromSource(source: string): string {
   if (source.startsWith('blob:')) {
     return 'Local Video';
@@ -153,8 +212,20 @@ export const browserGridVideoApi: StorageApi = {
 
     return {
       source: URL.createObjectURL(file),
-      label: file.name.replace(/\.[^.]+$/, '') || 'Local Video'
+      label: file.name.replace(/\.[^.]+$/, '') || 'Local Video',
+      sourceKey: `local:${file.name}:${file.size}:${file.lastModified}`
     } satisfies LocalVideoSelection;
+  },
+  async selectVideoFolder() {
+    const files = await pickVideoFolderFiles();
+    return files.map(
+      (file) =>
+        ({
+          source: URL.createObjectURL(file),
+          label: file.name.replace(/\.[^.]+$/, '') || 'Local Video',
+          sourceKey: `local:${file.name}:${file.size}:${file.lastModified}`
+        }) satisfies FolderVideoSelection
+    );
   },
   async validateSource(value, local) {
     if (!value.trim()) {

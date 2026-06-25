@@ -2,9 +2,11 @@ import type { Preset } from '../shared/types';
 
 interface ToolbarProps {
   onAdd: () => void;
+  onToggleSidebar: () => void;
   onOpenGridConfig: () => void;
   onToggleFullscreen: () => void;
   isFullscreen: boolean;
+  sidebarOpen: boolean;
   onPlayAll: () => void;
   onPauseAll: () => void;
   onMuteAll: (muted: boolean) => void;
@@ -23,9 +25,11 @@ const buttonClassName =
 
 export function Toolbar({
   onAdd,
+  onToggleSidebar,
   onOpenGridConfig,
   onToggleFullscreen,
   isFullscreen,
+  sidebarOpen,
   onPlayAll,
   onPauseAll,
   onMuteAll,
@@ -49,6 +53,9 @@ export function Toolbar({
         <div className="flex flex-wrap gap-2">
           <button data-testid="toolbar-add-video" type="button" onClick={onAdd} className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-slate-900 transition hover:brightness-105">
             + Add Video
+          </button>
+          <button type="button" onClick={onToggleSidebar} className={buttonClassName}>
+            {sidebarOpen ? 'Hide Library' : 'Show Library'}
           </button>
           <button type="button" onClick={onOpenGridConfig} className={buttonClassName}>Grid Config</button>
           <button type="button" onClick={onToggleFullscreen} className={buttonClassName}>

@@ -6,6 +6,7 @@ import http from 'node:http';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import type {
+  FolderVideoSelection,
   GridSession,
   LocalVideoSelection,
   Preset,
@@ -185,6 +186,10 @@ function inferSourceType(value: string): SourceType | null {
   }
 
   return null;
+}
+
+function toLocalSourceKey(filePath: string, stat: fs.Stats): string {
+  return `local:${path.basename(filePath)}:${stat.size}:${stat.mtimeMs}`;
 }
 
 async function validateSource(value: string, local: boolean): Promise<SourceValidationResult> {
@@ -393,10 +398,42 @@ ipcMain.handle('dialog:select-local-video', async () => {
   }
 
   const filePath = result.filePaths[0];
+  const stat = fs.statSync(filePath);
   return {
     source: filePath,
-    label: path.basename(filePath, path.extname(filePath))
+    label: path.basename(filePath, path.extname(filePath)),
+    sourceKey: toLocalSourceKey(filePath, stat)
   } satisfies LocalVideoSelection;
+});
+
+ipcMain.handle('dialog:select-video-folder', async () => {
+  if (isTestMode) {
+    return [] as FolderVideoSelection[];
+  }
+
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    properties: ['openDirectory']
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return [] as FolderVideoSelection[];
+  }
+
+  const directoryPath = result.filePaths[0];
+  const entries = fs.readdirSync(directoryPath, { withFileTypes: true });
+  const videos = entries
+    .filter((entry) => entry.isFile() && ['.mp4', '.mkv', '.mov', '.avi', '.webm', '.m4v'].includes(path.extname(entry.name).toLowerCase()))
+    .map((entry) => {
+      const filePath = path.join(directoryPath, entry.name);
+      const stat = fs.statSync(filePath);
+      return {
+        source: filePath,
+        label: path.basename(filePath, path.extname(filePath)),
+        sourceKey: toLocalSourceKey(filePath, stat)
+      } satisfies FolderVideoSelection;
+    });
+
+  return videos;
 });
 
 ipcMain.handle('source:validate', (_event, value: string, local: boolean) => {

@@ -1,9 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { resetGridStore, useGridStore } from './state/grid-store';
 import type {
+  FolderVideoSelection,
   GridSession,
   LocalVideoSelection,
   Preset,
@@ -18,6 +19,7 @@ function createBridgeMock(session?: GridSession) {
     loadSession: vi.fn().mockResolvedValue(session ?? { cells: [], presets: [], recentSources: [] }),
     saveSession: vi.fn().mockResolvedValue(undefined),
     selectLocalVideo: vi.fn<() => Promise<LocalVideoSelection | null>>().mockResolvedValue(null),
+    selectVideoFolder: vi.fn<() => Promise<FolderVideoSelection[]>>().mockResolvedValue([]),
     validateSource: vi.fn<(value: string, local: boolean) => Promise<SourceValidationResult>>(),
     resolveSource: vi.fn<
       (cellId: string, value: string, sourceType: SourceType) => Promise<ResolvedSource>
@@ -89,6 +91,7 @@ describe('App UI behavior', () => {
           rowSpan: 1,
           label: 'Front Door',
           source: '/videos/front-door.mp4',
+          sourceKey: 'local:front-door',
           sourceType: 'local',
           resolvedSource: 'http://127.0.0.1/local/front-door.mp4',
           playing: false,
@@ -106,6 +109,7 @@ describe('App UI behavior', () => {
           rowSpan: 1,
           label: 'Garage',
           source: '/videos/garage.mp4',
+          sourceKey: 'local:garage',
           sourceType: 'local',
           resolvedSource: 'http://127.0.0.1/local/garage.mp4',
           playing: true,
@@ -355,6 +359,7 @@ describe('App UI behavior', () => {
           rowSpan: 1,
           label: 'Front Door',
           source: '/videos/front-door.mp4',
+          sourceKey: 'local:front-door',
           sourceType: 'local',
           resolvedSource: 'http://127.0.0.1/local/front-door.mp4',
           playing: false,
@@ -391,5 +396,69 @@ describe('App UI behavior', () => {
     expect(screen.queryByTestId('video-cell-overlay-controls-cell-1')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Mute' })).toBeInTheDocument();
+  });
+
+  it('lists folder videos in the sidebar and supports drag drop with active session counts', async () => {
+    const user = userEvent.setup();
+    const bridge = createBridgeMock();
+    bridge.selectVideoFolder.mockResolvedValue([
+      {
+        source: 'blob:camera-a',
+        label: 'Camera A',
+        sourceKey: 'local:camera-a',
+        thumbnailSource: 'data:image/png;base64,thumb-a'
+      }
+    ]);
+    bridge.resolveSource.mockResolvedValue({
+      sourceType: 'local',
+      originalSource: 'blob:camera-a',
+      playbackUrl: 'blob:camera-a',
+      isLive: false
+    });
+    window.gridVideo = bridge;
+
+    render(<App />);
+
+    await screen.findByText('The wall is ready.');
+    await user.click(screen.getByRole('button', { name: 'Pick Folder' }));
+
+    const sidebarCard = await screen.findByTestId('sidebar-video-Camera A');
+    expect(within(sidebarCard).getByText('Camera A')).toBeInTheDocument();
+
+    const targetCell = useGridStore.getState().cells[0];
+    const dataTransfer = {
+      types: ['application/x-grid-video'],
+      getData: vi.fn().mockReturnValue(
+        JSON.stringify({
+          source: 'blob:camera-a',
+          label: 'Camera A',
+          sourceKey: 'local:camera-a'
+        })
+      ),
+      setData: vi.fn(),
+      effectAllowed: 'copy',
+      dropEffect: 'copy'
+    };
+
+    fireEvent.dragOver(screen.getByTestId(`video-cell-${targetCell.id}`), { dataTransfer });
+    fireEvent.drop(screen.getByTestId(`video-cell-${targetCell.id}`), { dataTransfer });
+
+    await waitFor(() => {
+      expect(bridge.resolveSource).toHaveBeenCalledWith(targetCell.id, 'blob:camera-a', 'local');
+    });
+
+    expect(within(sidebarCard).getByText('1')).toBeInTheDocument();
+
+    const secondCell = useGridStore.getState().cells.find((cell) => cell.id !== targetCell.id && !cell.source);
+    expect(secondCell).toBeDefined();
+
+    fireEvent.dragOver(screen.getByTestId(`video-cell-${secondCell!.id}`), { dataTransfer });
+    fireEvent.drop(screen.getByTestId(`video-cell-${secondCell!.id}`), { dataTransfer });
+
+    await waitFor(() => {
+      expect(useGridStore.getState().cells.filter((cell) => cell.sourceKey === 'local:camera-a')).toHaveLength(2);
+    });
+
+    expect(within(sidebarCard).getByText('2')).toBeInTheDocument();
   });
 });

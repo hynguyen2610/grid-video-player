@@ -15,6 +15,7 @@ const api: StorageApi = {
   loadSession: () => ipcRenderer.invoke('storage:load-session') as Promise<GridSession | null>,
   saveSession: (session) => ipcRenderer.invoke('storage:save-session', session) as Promise<void>,
   selectLocalVideo: () => ipcRenderer.invoke('dialog:select-local-video') as Promise<LocalVideoSelection | null>,
+  selectVideoFolder: () => ipcRenderer.invoke('dialog:select-video-folder'),
   validateSource: (value, local) =>
     ipcRenderer.invoke('source:validate', value, local),
   resolveSource: (cellId, value, sourceType) =>

@@ -17,6 +17,7 @@ interface VideoCellProps {
   maxColumns: number;
   maxRows: number;
   onAddSource: (id: string) => void;
+  onDropSource: (id: string, payload: string) => void;
   onResizeCell: (id: string, colSpan: number, rowSpan: number) => void;
   onPlayChange: (id: string, playing: boolean) => void;
   onMutedChange: (id: string, muted: boolean) => void;
@@ -50,6 +51,7 @@ export function VideoCell({
   maxColumns,
   maxRows,
   onAddSource,
+  onDropSource,
   onResizeCell,
   onPlayChange,
   onMutedChange,
@@ -64,6 +66,7 @@ export function VideoCell({
   const width = useElementWidth(container);
   const showLabels = width > 320 && !compact;
   const showCompactLabels = width > 300;
+  const [dropActive, setDropActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const resizeStateRef = useRef<{
     startX: number;
@@ -230,10 +233,30 @@ export function VideoCell({
       data-testid={`video-cell-${cell.id}`}
       className={`group relative flex overflow-hidden rounded-[28px] border border-border bg-card shadow-[0_20px_80px_rgba(0,0,0,0.28)] ${
         compact ? 'min-h-[180px]' : 'min-h-[220px] flex-col'
-      }`}
+      } ${dropActive ? 'ring-2 ring-accent ring-offset-2 ring-offset-slate-950' : ''}`}
       style={{
         gridColumn: `span ${cell.colSpan}`,
         gridRow: `span ${cell.rowSpan}`
+      }}
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes('application/x-grid-video')) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'copy';
+          if (!dropActive) {
+            setDropActive(true);
+          }
+        }
+      }}
+      onDragLeave={() => setDropActive(false)}
+      onDrop={(event) => {
+        const payload = event.dataTransfer.getData('application/x-grid-video');
+        if (!payload) {
+          return;
+        }
+
+        event.preventDefault();
+        setDropActive(false);
+        onDropSource(cell.id, payload);
       }}
     >
       <div className="relative flex-1 overflow-hidden bg-slate-950">
@@ -289,6 +312,12 @@ export function VideoCell({
         <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/55 to-transparent px-4 pb-4 pt-10 text-sm text-slate-200">
           {statusText}
         </div>
+
+        {dropActive ? (
+          <div className="pointer-events-none absolute inset-3 z-20 flex items-center justify-center rounded-[22px] border border-dashed border-accent bg-slate-950/75 text-sm font-medium text-white backdrop-blur-sm">
+            Drop video here
+          </div>
+        ) : null}
 
         {compact && !isEmpty ? (
           <div

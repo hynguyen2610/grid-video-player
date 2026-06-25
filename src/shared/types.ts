@@ -6,6 +6,7 @@ export interface Cell {
   colSpan: number;
   rowSpan: number;
   source: string | null;
+  sourceKey: string | null;
   sourceType: SourceType | null;
   resolvedSource: string | null;
   label: string;
@@ -69,6 +70,11 @@ export interface ScreenshotPayload {
 export interface LocalVideoSelection {
   source: string;
   label: string;
+  sourceKey?: string;
+}
+
+export interface FolderVideoSelection extends LocalVideoSelection {
+  thumbnailSource?: string;
 }
 
 export interface GridVideoTestApi {
@@ -76,6 +82,7 @@ export interface GridVideoTestApi {
   seedSession: (session: GridSession) => Promise<void>;
   getSession: () => Promise<GridSession | null>;
   setSelectedLocalVideo: (value: LocalVideoSelection | null) => Promise<void>;
+  setSelectedFolderVideos?: (value: FolderVideoSelection[]) => Promise<void>;
   setImportedPreset: (preset: Preset | null) => Promise<void>;
   setPromptResponse: (value: string | null) => void;
 }
@@ -84,6 +91,7 @@ export interface StorageApi {
   loadSession: () => Promise<GridSession | null>;
   saveSession: (session: GridSession) => Promise<void>;
   selectLocalVideo: () => Promise<LocalVideoSelection | null>;
+  selectVideoFolder: () => Promise<FolderVideoSelection[]>;
   validateSource: (value: string, local: boolean) => Promise<SourceValidationResult>;
   resolveSource: (cellId: string, value: string, sourceType: SourceType) => Promise<ResolvedSource>;
   stopRtspBridge: (cellId: string) => Promise<void>;
