@@ -57,10 +57,24 @@ export interface ScreenshotPayload {
   dataUrl: string;
 }
 
+export interface LocalVideoSelection {
+  source: string;
+  label: string;
+}
+
+export interface GridVideoTestApi {
+  resetSession: () => Promise<void>;
+  seedSession: (session: GridSession) => Promise<void>;
+  getSession: () => Promise<GridSession | null>;
+  setSelectedLocalVideo: (value: LocalVideoSelection | null) => Promise<void>;
+  setImportedPreset: (preset: Preset | null) => Promise<void>;
+  setPromptResponse: (value: string | null) => void;
+}
+
 export interface StorageApi {
   loadSession: () => Promise<GridSession | null>;
   saveSession: (session: GridSession) => Promise<void>;
-  selectLocalVideo: () => Promise<string | null>;
+  selectLocalVideo: () => Promise<LocalVideoSelection | null>;
   validateSource: (value: string, local: boolean) => Promise<SourceValidationResult>;
   resolveSource: (cellId: string, value: string, sourceType: SourceType) => Promise<ResolvedSource>;
   stopRtspBridge: (cellId: string) => Promise<void>;

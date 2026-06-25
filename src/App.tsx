@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { SourcePickerDialog } from './components/SourcePickerDialog';
 import { Toolbar } from './components/Toolbar';
 import { VideoCell } from './components/VideoCell';
+import { getGridVideoApi } from './lib/grid-video-api';
 import { maxCells, selectSession, useGridStore } from './state/grid-store';
 import type { Cell, Preset, SourceType } from './shared/types';
 
 function App() {
-  const [pickerTarget, setPickerTarget] = useState<string | null>(null);
   const videoMap = useRef(new Map<string, HTMLVideoElement>());
   const persistTimer = useRef<number | null>(null);
+  const api = getGridVideoApi();
 
   const {
     cells,
@@ -35,10 +35,10 @@ function App() {
   } = useGridStore();
 
   useEffect(() => {
-    void window.gridVideo.loadSession().then((session) => {
+    void api.loadSession().then((session) => {
       hydrateSession(session);
     });
-  }, [hydrateSession]);
+  }, [api, hydrateSession]);
 
   useEffect(() => {
     if (!hydrated) {
@@ -50,9 +50,9 @@ function App() {
     }
 
     persistTimer.current = window.setTimeout(() => {
-      void window.gridVideo.saveSession(selectSession(useGridStore.getState()));
+      void api.saveSession(selectSession(useGridStore.getState()));
     }, 250);
-  }, [cells, hydrated, presets, recentSources]);
+  }, [api, cells, hydrated, presets, recentSources]);
 
   useEffect(() => {
     return () => {
@@ -69,7 +69,7 @@ function App() {
     replaceCellSource(cellId, payload.source, payload.sourceType, payload.label);
     rememberRecentSource(payload.source);
     try {
-      const resolved = await window.gridVideo.resolveSource(cellId, payload.source, payload.sourceType);
+      const resolved = await api.resolveSource(cellId, payload.source, payload.sourceType);
       setResolvedSource(cellId, resolved.playbackUrl, resolved.isLive);
     } catch (error) {
       setCellStatus(cellId, 'error', error instanceof Error ? error.message : 'Source resolution failed');
@@ -81,43 +81,43 @@ function App() {
       return;
     }
 
+    const selection = await api.selectLocalVideo();
+    if (!selection) {
+      return;
+    }
+
     const id = addCell({
-      label: `Cell ${cells.length + 1}`
+      label: selection.label || `Cell ${cells.length + 1}`
     });
     if (id) {
-      setPickerTarget(id);
+      await assignSourceToCell(id, {
+        source: selection.source,
+        sourceType: 'local',
+        label: selection.label || `Cell ${cells.length + 1}`
+      });
     }
   }
 
   function handleRemove(id: string) {
     const cell = cells.find((entry) => entry.id === id);
     if (cell?.sourceType === 'rtsp') {
-      void window.gridVideo.stopRtspBridge(id);
+      void api.stopRtspBridge(id);
     }
     videoMap.current.delete(id);
     removeCell(id);
   }
 
-  async function handlePickerConfirm(payload: { source: string; sourceType: SourceType; label: string }) {
-    if (!pickerTarget) {
+  async function changeLocalVideo(id: string) {
+    const selection = await api.selectLocalVideo();
+    if (!selection) {
       return;
     }
 
-    await assignSourceToCell(pickerTarget, payload);
-  }
-
-  function handlePickerClose() {
-    if (pickerTarget) {
-      const pendingCell = useGridStore.getState().cells.find((cell) => cell.id === pickerTarget);
-      if (pendingCell && !pendingCell.source) {
-        removeCell(pickerTarget);
-      }
-    }
-    setPickerTarget(null);
-  }
-
-  function ensurePickerTarget(id: string) {
-    setPickerTarget(id);
+    await assignSourceToCell(id, {
+      source: selection.source,
+      sourceType: 'local',
+      label: selection.label
+    });
   }
 
   function registerVideo(id: string, element: HTMLVideoElement | null) {
@@ -169,7 +169,7 @@ function App() {
     });
 
     if (shots.length > 0) {
-      await window.gridVideo.saveScreenshots(shots);
+      await api.saveScreenshots(shots);
     }
   }
 
@@ -181,7 +181,7 @@ function App() {
   }
 
   async function handleImportPreset() {
-    const preset = await window.gridVideo.importPreset();
+    const preset = await api.importPreset();
     if (preset) {
       importPreset(preset);
       loadPreset(preset);
@@ -189,7 +189,7 @@ function App() {
   }
 
   async function handleExportPreset(preset: Preset) {
-    await window.gridVideo.exportPreset(preset);
+    await api.exportPreset(preset);
   }
 
   useEffect(() => {
@@ -245,13 +245,14 @@ function App() {
               onVolumeChange={setCellVolume}
               onTimeChange={setCellTime}
               onStatusChange={setCellStatus}
-              onChangeSource={ensurePickerTarget}
+              onChangeSource={(id) => void changeLocalVideo(id)}
               onRemove={handleRemove}
               registerVideo={registerVideo}
             />
           ))}
 
           <button
+            data-testid="grid-add-tile"
             type="button"
             onClick={() => void handleAddClick()}
             disabled={cells.length >= maxCells}
@@ -274,14 +275,6 @@ function App() {
           </div>
         ) : null}
       </main>
-
-      <SourcePickerDialog
-        open={pickerTarget !== null}
-        onClose={handlePickerClose}
-        onConfirm={handlePickerConfirm}
-        recentSources={recentSources}
-        initialLabel={cells.find((cell) => cell.id === pickerTarget)?.label ?? ''}
-      />
     </div>
   );
 }

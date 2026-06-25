@@ -5,6 +5,7 @@ import App from './App';
 import { resetGridStore, useGridStore } from './state/grid-store';
 import type {
   GridSession,
+  LocalVideoSelection,
   Preset,
   ResolvedSource,
   ScreenshotPayload,
@@ -16,7 +17,7 @@ function createBridgeMock(session?: GridSession) {
   return {
     loadSession: vi.fn().mockResolvedValue(session ?? { cells: [], presets: [], recentSources: [] }),
     saveSession: vi.fn().mockResolvedValue(undefined),
-    selectLocalVideo: vi.fn().mockResolvedValue(null),
+    selectLocalVideo: vi.fn<() => Promise<LocalVideoSelection | null>>().mockResolvedValue(null),
     validateSource: vi.fn<(value: string, local: boolean) => Promise<SourceValidationResult>>(),
     resolveSource: vi.fn<
       (cellId: string, value: string, sourceType: SourceType) => Promise<ResolvedSource>
@@ -41,6 +42,10 @@ describe('App UI behavior', () => {
       sourceType: 'local',
       isLive: false
     });
+    bridge.selectLocalVideo.mockResolvedValue({
+      source: '/videos/garage.mp4',
+      label: 'Garage'
+    });
     bridge.resolveSource.mockResolvedValue({
       sourceType: 'local',
       originalSource: '/videos/garage.mp4',
@@ -54,11 +59,6 @@ describe('App UI behavior', () => {
 
     await screen.findByText('The grid is empty.');
     await user.click(screen.getAllByText('Add Video')[0]);
-
-    await screen.findByText('Add or replace a video source');
-    await user.type(screen.getByLabelText('Label'), 'Garage');
-    await user.type(screen.getByLabelText('Selected file'), '/videos/garage.mp4');
-    await user.click(screen.getByRole('button', { name: 'Validate & Confirm' }));
 
     await waitFor(() => {
       expect(bridge.resolveSource).toHaveBeenCalledWith(
@@ -111,6 +111,10 @@ describe('App UI behavior', () => {
       ],
       presets: [],
       recentSources: []
+    });
+    bridge.selectLocalVideo.mockResolvedValue({
+      source: '/videos/front-door.mp4',
+      label: 'Front Door'
     });
 
     window.gridVideo = bridge;

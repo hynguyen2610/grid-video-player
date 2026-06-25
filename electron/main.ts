@@ -5,9 +5,9 @@ import os from 'node:os';
 import http from 'node:http';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import Store from 'electron-store';
 import type {
   GridSession,
+  LocalVideoSelection,
   Preset,
   ResolvedSource,
   ScreenshotPayload,
@@ -15,21 +15,42 @@ import type {
   SourceValidationResult
 } from '../src/shared/types';
 
+const isTestMode = process.env.GRID_VIDEO_TEST_MODE === '1';
+if (isTestMode) {
+  const userDataDir =
+    process.env.GRID_VIDEO_USER_DATA_DIR ??
+    path.join(os.tmpdir(), `grid-video-playwright-${process.pid}`);
+  app.setPath('userData', userDataDir);
+}
+
 const DEFAULT_SESSION: GridSession = {
   cells: [],
   presets: [],
   recentSources: []
 };
 
-const store = new Store<{ session: GridSession }>({
-  defaults: {
-    session: DEFAULT_SESSION
+const sessionFilePath = path.join(app.getPath('userData'), 'session.json');
+
+function readSession(): GridSession {
+  try {
+    if (!fs.existsSync(sessionFilePath)) {
+      return DEFAULT_SESSION;
+    }
+
+    const raw = fs.readFileSync(sessionFilePath, 'utf8');
+    return {
+      ...DEFAULT_SESSION,
+      ...(JSON.parse(raw) as GridSession)
+    };
+  } catch {
+    return DEFAULT_SESSION;
   }
-});
-const sessionStore = store as unknown as {
-  get: (key: 'session') => GridSession;
-  set: (key: 'session', value: GridSession) => void;
-};
+}
+
+function writeSession(session: GridSession): void {
+  fs.mkdirSync(path.dirname(sessionFilePath), { recursive: true });
+  fs.writeFileSync(sessionFilePath, `${JSON.stringify(session, null, 2)}\n`, 'utf8');
+}
 
 class MediaServer {
   private server: http.Server | null = null;
@@ -137,8 +158,11 @@ interface RtspSession {
 const rtspSessions = new Map<string, RtspSession>();
 const mediaServer = new MediaServer(rtspSessions);
 let mainWindow: BrowserWindow | null = null;
+let selectedLocalVideoForTests: LocalVideoSelection | null = null;
+let importedPresetForTests: Preset | null = null;
 
 const isDev = !app.isPackaged;
+const shouldUseDevServer = isDev && !isTestMode;
 
 function inferSourceType(value: string): SourceType | null {
   const lower = value.toLowerCase();
@@ -309,7 +333,7 @@ async function createWindow(): Promise<void> {
     }
   });
 
-  if (isDev) {
+  if (shouldUseDevServer) {
     await mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
       shell.openExternal(url);
@@ -342,14 +366,18 @@ app.on('before-quit', async () => {
 });
 
 ipcMain.handle('storage:load-session', () => {
-  return sessionStore.get('session');
+  return readSession();
 });
 
 ipcMain.handle('storage:save-session', (_event, session: GridSession) => {
-  sessionStore.set('session', session);
+  writeSession(session);
 });
 
 ipcMain.handle('dialog:select-local-video', async () => {
+  if (isTestMode) {
+    return selectedLocalVideoForTests;
+  }
+
   const result = await dialog.showOpenDialog(mainWindow!, {
     properties: ['openFile'],
     filters: [
@@ -364,7 +392,11 @@ ipcMain.handle('dialog:select-local-video', async () => {
     return null;
   }
 
-  return result.filePaths[0];
+  const filePath = result.filePaths[0];
+  return {
+    source: filePath,
+    label: path.basename(filePath, path.extname(filePath))
+  } satisfies LocalVideoSelection;
 });
 
 ipcMain.handle('source:validate', (_event, value: string, local: boolean) => {
@@ -394,6 +426,10 @@ ipcMain.handle('preset:export', async (_event, preset: Preset) => {
 });
 
 ipcMain.handle('preset:import', async () => {
+  if (isTestMode && importedPresetForTests) {
+    return importedPresetForTests;
+  }
+
   const result = await dialog.showOpenDialog(mainWindow!, {
     properties: ['openFile'],
     filters: [{ name: 'JSON', extensions: ['json'] }]
@@ -423,3 +459,27 @@ ipcMain.handle('screenshots:save', async (_event, shots: ScreenshotPayload[]) =>
     return filePath;
   });
 });
+
+if (isTestMode) {
+  ipcMain.handle('test:reset-session', () => {
+    writeSession(DEFAULT_SESSION);
+    selectedLocalVideoForTests = null;
+    importedPresetForTests = null;
+  });
+
+  ipcMain.handle('test:seed-session', (_event, session: GridSession) => {
+    writeSession(session);
+  });
+
+  ipcMain.handle('test:get-session', () => {
+    return readSession();
+  });
+
+  ipcMain.handle('test:set-selected-local-video', (_event, value: LocalVideoSelection | null) => {
+    selectedLocalVideoForTests = value;
+  });
+
+  ipcMain.handle('test:set-imported-preset', (_event, preset: Preset | null) => {
+    importedPresetForTests = preset;
+  });
+}

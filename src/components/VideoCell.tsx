@@ -136,6 +136,7 @@ export function VideoCell({
   return (
     <div
       ref={setContainer}
+      data-testid={`video-cell-${cell.id}`}
       className="group flex min-h-[220px] flex-col overflow-hidden rounded-[28px] border border-border bg-card shadow-[0_20px_80px_rgba(0,0,0,0.28)]"
     >
       <div className="relative flex-1 overflow-hidden bg-slate-950">

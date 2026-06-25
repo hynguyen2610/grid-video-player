@@ -3,6 +3,8 @@ dist/
 dist-electron/
 .vite/
 coverage/
+playwright-report/
+test-results/
 
 .DS_Store
 Thumbs.db

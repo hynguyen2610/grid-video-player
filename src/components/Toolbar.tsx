@@ -41,7 +41,7 @@ export function Toolbar({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={onAdd} className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-slate-900 transition hover:brightness-105">
+          <button data-testid="toolbar-add-video" type="button" onClick={onAdd} className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-slate-900 transition hover:brightness-105">
             + Add Video
           </button>
           <button type="button" onClick={onPlayAll} className={buttonClassName}>Play All</button>

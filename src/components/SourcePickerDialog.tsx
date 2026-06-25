@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getGridVideoApi } from '../lib/grid-video-api';
 import type { SourceType } from '../shared/types';
 import { inferSourceType } from '../utils/source';
 
@@ -22,17 +23,18 @@ export function SourcePickerDialog({
   const [source, setSource] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const api = getGridVideoApi();
 
   if (!open) {
     return null;
   }
 
   async function chooseLocalFile() {
-    const filePath = await window.gridVideo.selectLocalVideo();
-    if (filePath) {
-      setSource(filePath);
+    const selection = await api.selectLocalVideo();
+    if (selection) {
+      setSource(selection.source);
       if (!label) {
-        setLabel(filePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '') ?? '');
+        setLabel(selection.label);
       }
     }
   }
@@ -41,7 +43,7 @@ export function SourcePickerDialog({
     setBusy(true);
     setMessage(null);
 
-    const validation = await window.gridVideo.validateSource(source, tab === 'local');
+    const validation = await api.validateSource(source, tab === 'local');
     if (!validation.ok || !validation.sourceType) {
       setMessage(validation.message ?? 'Unable to validate source.');
       setBusy(false);
@@ -64,11 +66,11 @@ export function SourcePickerDialog({
     }
   }
 
-  const canSubmit = !!source.trim() && !busy && !!inferSourceType(source);
+  const canSubmit = !!source.trim() && !busy && (source.startsWith('blob:') || inferSourceType(source) === 'local');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-xl rounded-3xl border border-border bg-panel p-6 shadow-glow">
+      <div data-testid="source-picker-dialog" className="w-full max-w-xl rounded-3xl border border-border bg-panel p-6 shadow-glow">
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-accentSoft">Source picker</p>
