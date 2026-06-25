@@ -131,6 +131,8 @@ function ensureThumbnailLoading(item: FolderVideoSelection) {
   video.playsInline = true;
   video.preload = 'auto';
   let captured = false;
+  let targetFrameRequested = false;
+  let awaitingFallbackSeek = false;
 
   const cleanup = () => {
     video.src = '';
@@ -177,14 +179,63 @@ function ensureThumbnailLoading(item: FolderVideoSelection) {
       finalize(canvas.toDataURL('image/png'));
     };
 
+    const seekToApproximateTenthFrame = () => {
+      const frameTime = 10 / 30;
+      const duration = Number.isFinite(video.duration) ? video.duration : frameTime;
+      const targetTime = Math.min(frameTime, Math.max(0, duration));
+      if (Math.abs(video.currentTime - targetTime) > 0.001) {
+        awaitingFallbackSeek = true;
+        video.currentTime = targetTime;
+        return true;
+      }
+      return false;
+    };
+
+    const requestTenthFrame = () => {
+      if (typeof video.requestVideoFrameCallback !== 'function') {
+        return false;
+      }
+
+      targetFrameRequested = true;
+      let frameCount = 0;
+      const step = () => {
+        frameCount += 1;
+        updateEntry(cacheKey, {
+          status: 'loading',
+          progress: Math.max((thumbnailCache.get(cacheKey)?.progress ?? 0), Math.min(92, 35 + frameCount * 5))
+        });
+
+        if (frameCount >= 10) {
+          video.pause();
+          captureFrame();
+          return;
+        }
+
+        video.requestVideoFrameCallback(step);
+      };
+
+      video
+        .play()
+        .then(() => {
+          video.requestVideoFrameCallback(step);
+        })
+        .catch(() => {
+          seekToApproximateTenthFrame();
+        });
+      return true;
+    };
+
     const handleLoadedMetadata = () => {
       updateEntry(cacheKey, {
         status: 'loading',
         progress: Math.max((thumbnailCache.get(cacheKey)?.progress ?? 0), 35)
       });
 
-      if (video.currentTime !== 0) {
-        video.currentTime = 0;
+      if (requestTenthFrame()) {
+        return;
+      }
+
+      if (seekToApproximateTenthFrame()) {
         return;
       }
 
@@ -198,6 +249,10 @@ function ensureThumbnailLoading(item: FolderVideoSelection) {
         status: 'loading',
         progress: Math.max((thumbnailCache.get(cacheKey)?.progress ?? 0), 72)
       });
+
+      if (targetFrameRequested || awaitingFallbackSeek) {
+        return;
+      }
       captureFrame();
     };
 
@@ -206,6 +261,7 @@ function ensureThumbnailLoading(item: FolderVideoSelection) {
         status: 'loading',
         progress: Math.max((thumbnailCache.get(cacheKey)?.progress ?? 0), 88)
       });
+      awaitingFallbackSeek = false;
       captureFrame();
     };
 

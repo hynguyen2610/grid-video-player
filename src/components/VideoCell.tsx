@@ -402,6 +402,8 @@ export function VideoCell({
                     max={cell.duration ?? 0}
                     step={0.1}
                     value={Math.min(cell.currentTime, cell.duration ?? cell.currentTime)}
+                    onClick={(event) => event.stopPropagation()}
+                    onPointerDown={(event) => event.stopPropagation()}
                     onChange={(event) => {
                       event.stopPropagation();
                       const video = videoRef.current;
@@ -418,6 +420,8 @@ export function VideoCell({
                     min={0}
                     max={100}
                     value={cell.volume}
+                    onClick={(event) => event.stopPropagation()}
+                    onPointerDown={(event) => event.stopPropagation()}
                     onChange={(event) => {
                       event.stopPropagation();
                       onVolumeChange(cell.id, Number(event.target.value));
@@ -490,6 +494,8 @@ export function VideoCell({
                 max={cell.duration ?? 0}
                 step={0.1}
                 value={Math.min(cell.currentTime, cell.duration ?? cell.currentTime)}
+                onClick={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
                 onChange={(event) => {
                   event.stopPropagation();
                   const video = videoRef.current;
@@ -525,6 +531,8 @@ export function VideoCell({
               min={0}
               max={100}
               value={cell.volume}
+              onClick={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
               onChange={(event) => {
                 event.stopPropagation();
                 onVolumeChange(cell.id, Number(event.target.value));
