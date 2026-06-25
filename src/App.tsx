@@ -8,6 +8,8 @@ import type { Cell, Preset, SourceType } from './shared/types';
 
 function App() {
   const [gridConfigOpen, setGridConfigOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const appRootRef = useRef<HTMLDivElement | null>(null);
   const videoMap = useRef(new Map<string, HTMLVideoElement>());
   const persistTimer = useRef<number | null>(null);
   const api = getGridVideoApi();
@@ -66,6 +68,15 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    function handleFullscreenChange() {
+      setIsFullscreen(document.fullscreenElement === appRootRef.current);
+    }
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
   async function assignSourceToCell(
     cellId: string,
     payload: { source: string; sourceType: SourceType; label: string }
@@ -80,13 +91,25 @@ function App() {
     }
   }
 
+  async function selectLocalVideoPreservingFullscreen() {
+    const container = appRootRef.current;
+    const wasFullscreen = !!container && document.fullscreenElement === container;
+    const selection = await api.selectLocalVideo();
+
+    if (wasFullscreen && document.fullscreenElement !== container) {
+      await container?.requestFullscreen?.().catch(() => undefined);
+    }
+
+    return selection;
+  }
+
   async function handleAddClick() {
     const emptySlotCount = cells.filter((cell) => !cell.source).length;
     if (emptySlotCount === 0) {
       return;
     }
 
-    const selection = await api.selectLocalVideo();
+    const selection = await selectLocalVideoPreservingFullscreen();
     if (!selection) {
       return;
     }
@@ -113,7 +136,7 @@ function App() {
   }
 
   async function changeLocalVideo(id: string) {
-    const selection = await api.selectLocalVideo();
+    const selection = await selectLocalVideoPreservingFullscreen();
     if (!selection) {
       return;
     }
@@ -197,6 +220,20 @@ function App() {
     await api.exportPreset(preset);
   }
 
+  async function toggleFullscreen() {
+    const container = appRootRef.current;
+    if (!container) {
+      return;
+    }
+
+    if (document.fullscreenElement === container) {
+      await document.exitFullscreen?.();
+      return;
+    }
+
+    await container.requestFullscreen?.();
+  }
+
   useEffect(() => {
     if (!hydrated) {
       return;
@@ -218,24 +255,41 @@ function App() {
   const activeCells = cells.filter((cell) => !!cell.source);
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,#1e2841,transparent_32%),linear-gradient(180deg,#0a0d14_0%,#0d1220_100%)] text-white">
-      <Toolbar
-        onAdd={handleAddClick}
-        onOpenGridConfig={() => setGridConfigOpen(true)}
-        onPlayAll={() => activeCells.forEach((cell) => setCellPlayback(cell.id, true))}
-        onPauseAll={() => activeCells.forEach((cell) => setCellPlayback(cell.id, false))}
-        onMuteAll={(muted) => activeCells.forEach((cell) => setCellMuted(cell.id, muted))}
-        onSyncAll={syncPlayback}
-        onScreenshotAll={() => void screenshotAll()}
-        onSavePreset={() => void handleSavePreset()}
-        onImportPreset={() => void handleImportPreset()}
-        presets={presets}
-        onLoadPreset={(preset) => loadPreset(preset)}
-        onDeletePreset={(presetId) => deletePreset(presetId)}
-        onExportPreset={(preset) => void handleExportPreset(preset)}
-      />
+    <div
+      ref={appRootRef}
+      className="min-h-screen bg-[radial-gradient(circle_at_top,#1e2841,transparent_32%),linear-gradient(180deg,#0a0d14_0%,#0d1220_100%)] text-white"
+    >
+      {!isFullscreen ? (
+        <Toolbar
+          onAdd={handleAddClick}
+          onOpenGridConfig={() => setGridConfigOpen(true)}
+          onToggleFullscreen={() => void toggleFullscreen()}
+          isFullscreen={isFullscreen}
+          onPlayAll={() => activeCells.forEach((cell) => setCellPlayback(cell.id, true))}
+          onPauseAll={() => activeCells.forEach((cell) => setCellPlayback(cell.id, false))}
+          onMuteAll={(muted) => activeCells.forEach((cell) => setCellMuted(cell.id, muted))}
+          onSyncAll={syncPlayback}
+          onScreenshotAll={() => void screenshotAll()}
+          onSavePreset={() => void handleSavePreset()}
+          onImportPreset={() => void handleImportPreset()}
+          presets={presets}
+          onLoadPreset={(preset) => loadPreset(preset)}
+          onDeletePreset={(presetId) => deletePreset(presetId)}
+          onExportPreset={(preset) => void handleExportPreset(preset)}
+        />
+      ) : null}
 
-      <main className="p-5">
+      {isFullscreen ? (
+        <button
+          type="button"
+          onClick={() => void toggleFullscreen()}
+          className="fixed right-4 top-4 z-30 rounded-full border border-border bg-black/50 px-4 py-2 text-sm text-white backdrop-blur transition hover:border-accent"
+        >
+          Exit Fullscreen
+        </button>
+      ) : null}
+
+      <main className={isFullscreen ? 'p-3' : 'p-5'}>
         <div
           className="grid gap-3"
           style={{

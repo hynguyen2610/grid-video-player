@@ -32,6 +32,11 @@ function createBridgeMock(session?: GridSession) {
 describe('App UI behavior', () => {
   beforeEach(() => {
     resetGridStore();
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      writable: true,
+      value: null
+    });
   });
 
   it('adds a cell through the source picker and keeps the add tile available', async () => {
@@ -182,5 +187,119 @@ describe('App UI behavior', () => {
     const activeCells = useGridStore.getState().cells.filter((cell) => cell.source);
     expect(activeCells).toHaveLength(1);
     expect(activeCells[0]?.id).toBe(targetCellId);
+  });
+
+  it('hides the top toolbar while fullscreen mode is active', async () => {
+    const user = userEvent.setup();
+    const bridge = createBridgeMock();
+    window.gridVideo = bridge;
+
+    const requestFullscreen = vi.fn(async function (this: HTMLElement) {
+      Object.defineProperty(document, 'fullscreenElement', {
+        configurable: true,
+        writable: true,
+        value: this
+      });
+      document.dispatchEvent(new Event('fullscreenchange'));
+    });
+
+    const exitFullscreen = vi.fn(async () => {
+      Object.defineProperty(document, 'fullscreenElement', {
+        configurable: true,
+        writable: true,
+        value: null
+      });
+      document.dispatchEvent(new Event('fullscreenchange'));
+    });
+
+    Object.defineProperty(HTMLElement.prototype, 'requestFullscreen', {
+      configurable: true,
+      value: requestFullscreen
+    });
+    Object.defineProperty(document, 'exitFullscreen', {
+      configurable: true,
+      value: exitFullscreen
+    });
+
+    render(<App />);
+
+    expect(screen.getByRole('button', { name: 'Fullscreen' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Fullscreen' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Fullscreen' })).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: 'Exit Fullscreen' })).toBeInTheDocument();
+  });
+
+  it('restores fullscreen after picking a video from an empty cell', async () => {
+    const user = userEvent.setup();
+    const bridge = createBridgeMock();
+    bridge.selectLocalVideo.mockImplementation(async () => {
+      Object.defineProperty(document, 'fullscreenElement', {
+        configurable: true,
+        writable: true,
+        value: null
+      });
+      document.dispatchEvent(new Event('fullscreenchange'));
+
+      return {
+        source: '/videos/fullscreen-cell.mp4',
+        label: 'Fullscreen Cell'
+      };
+    });
+    bridge.resolveSource.mockResolvedValue({
+      sourceType: 'local',
+      originalSource: '/videos/fullscreen-cell.mp4',
+      playbackUrl: 'http://127.0.0.1/local/fullscreen-cell.mp4',
+      isLive: false
+    });
+    window.gridVideo = bridge;
+
+    const requestFullscreen = vi.fn(async function (this: HTMLElement) {
+      Object.defineProperty(document, 'fullscreenElement', {
+        configurable: true,
+        writable: true,
+        value: this
+      });
+      document.dispatchEvent(new Event('fullscreenchange'));
+    });
+
+    Object.defineProperty(HTMLElement.prototype, 'requestFullscreen', {
+      configurable: true,
+      value: requestFullscreen
+    });
+    Object.defineProperty(document, 'exitFullscreen', {
+      configurable: true,
+      value: vi.fn(async () => {
+        Object.defineProperty(document, 'fullscreenElement', {
+          configurable: true,
+          writable: true,
+          value: null
+        });
+        document.dispatchEvent(new Event('fullscreenchange'));
+      })
+    });
+
+    render(<App />);
+
+    await user.click(screen.getByRole('button', { name: 'Fullscreen' }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Exit Fullscreen' })).toBeInTheDocument();
+    });
+
+    const emptyCellIds = useGridStore
+      .getState()
+      .cells.filter((cell) => !cell.source)
+      .map((cell) => cell.id);
+    const targetCellId = emptyCellIds[2];
+
+    await user.click(screen.getByTestId(`video-cell-add-${targetCellId}`));
+
+    await waitFor(() => {
+      expect(requestFullscreen).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.queryByRole('button', { name: 'Fullscreen' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Exit Fullscreen' })).toBeInTheDocument();
   });
 });

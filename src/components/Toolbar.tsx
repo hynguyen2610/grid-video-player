@@ -3,6 +3,8 @@ import type { Preset } from '../shared/types';
 interface ToolbarProps {
   onAdd: () => void;
   onOpenGridConfig: () => void;
+  onToggleFullscreen: () => void;
+  isFullscreen: boolean;
   onPlayAll: () => void;
   onPauseAll: () => void;
   onMuteAll: (muted: boolean) => void;
@@ -22,6 +24,8 @@ const buttonClassName =
 export function Toolbar({
   onAdd,
   onOpenGridConfig,
+  onToggleFullscreen,
+  isFullscreen,
   onPlayAll,
   onPauseAll,
   onMuteAll,
@@ -47,6 +51,9 @@ export function Toolbar({
             + Add Video
           </button>
           <button type="button" onClick={onOpenGridConfig} className={buttonClassName}>Grid Config</button>
+          <button type="button" onClick={onToggleFullscreen} className={buttonClassName}>
+            {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+          </button>
           <button type="button" onClick={onPlayAll} className={buttonClassName}>Play All</button>
           <button type="button" onClick={onPauseAll} className={buttonClassName}>Pause All</button>
           <button type="button" onClick={() => onMuteAll(true)} className={buttonClassName}>Mute All</button>
