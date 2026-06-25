@@ -178,6 +178,7 @@ export function VideoCell({
               <p className="mt-2 text-sm">Add a local video file to this cell.</p>
               <button
                 type="button"
+                data-testid={`video-cell-add-${cell.id}`}
                 onClick={() => onAddSource(cell.id)}
                 className="mt-5 rounded-full bg-accent px-4 py-2 text-sm font-medium text-slate-900 transition hover:brightness-105"
               >
@@ -196,7 +197,7 @@ export function VideoCell({
           ) : null}
         </div>
 
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/55 to-transparent px-4 pb-4 pt-10 text-sm text-slate-200">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/55 to-transparent px-4 pb-4 pt-10 text-sm text-slate-200">
           {statusText}
         </div>
       </div>

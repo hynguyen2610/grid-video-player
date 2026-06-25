@@ -138,4 +138,49 @@ describe('App UI behavior', () => {
     expect(garageCell).not.toBeNull();
     expect(within(garageCell as HTMLElement).getByRole('button', { name: 'Unmute' })).toBeInTheDocument();
   });
+
+  it('opens the picker for the clicked empty cell and assigns the video to that cell', async () => {
+    const user = userEvent.setup();
+    const bridge = createBridgeMock();
+    bridge.selectLocalVideo.mockResolvedValue({
+      source: '/videos/lobby.mp4',
+      label: 'Lobby'
+    });
+    bridge.resolveSource.mockResolvedValue({
+      sourceType: 'local',
+      originalSource: '/videos/lobby.mp4',
+      playbackUrl: 'http://127.0.0.1/local/lobby.mp4',
+      isLive: false
+    });
+
+    window.gridVideo = bridge;
+
+    render(<App />);
+
+    await screen.findByText('The wall is ready.');
+
+    const emptyCellIds = useGridStore
+      .getState()
+      .cells.filter((cell) => !cell.source)
+      .map((cell) => cell.id);
+    const targetCellId = emptyCellIds[4];
+
+    await user.click(screen.getByTestId(`video-cell-add-${targetCellId}`));
+
+    await waitFor(() => {
+      expect(bridge.resolveSource).toHaveBeenCalledWith(
+        targetCellId,
+        '/videos/lobby.mp4',
+        'local'
+      );
+    });
+
+    const updatedTargetCell = useGridStore.getState().cells.find((cell) => cell.id === targetCellId);
+    expect(updatedTargetCell?.label).toBe('Lobby');
+    expect(updatedTargetCell?.source).toBe('/videos/lobby.mp4');
+
+    const activeCells = useGridStore.getState().cells.filter((cell) => cell.source);
+    expect(activeCells).toHaveLength(1);
+    expect(activeCells[0]?.id).toBe(targetCellId);
+  });
 });
