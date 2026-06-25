@@ -12,6 +12,8 @@ import type {
 import { inferSourceType } from '../utils/source';
 
 const SESSION_STORAGE_KEY = 'grid-video:web-session';
+const HANDLE_DB_NAME = 'grid-video-handles';
+const HANDLE_STORE_NAME = 'file-handles';
 
 interface FilePickerWindow extends Window {
   showOpenFilePicker?: (options?: {
@@ -21,19 +23,39 @@ interface FilePickerWindow extends Window {
       description?: string;
       accept: Record<string, string[]>;
     }>;
-  }) => Promise<Array<{ getFile: () => Promise<File> }>>;
-  showDirectoryPicker?: () => Promise<{
-    values: () => AsyncIterable<{ kind: string; getFile: () => Promise<File>; name: string }>;
-  }>;
+  }) => Promise<FileSystemFileHandle[]>;
+  showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
 }
 
-function cloneSession(session: GridSession): GridSession {
+interface PersistedGridSession extends Omit<GridSession, 'libraryVideos'> {
+  libraryVideos?: Array<Pick<FolderVideoSelection, 'label' | 'sourceKey' | 'thumbnailSource'>>;
+}
+
+function parsePersistedSession(raw: string | null): PersistedGridSession | null {
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as PersistedGridSession;
+  } catch {
+    return null;
+  }
+}
+
+function cloneSession(session: GridSession): PersistedGridSession {
   return {
     gridColumns: session.gridColumns,
     gridRows: session.gridRows,
     layoutMode: session.layoutMode,
     compactMode: session.compactMode,
+    sidebarOpen: session.sidebarOpen,
     cells: session.cells.map((cell) => ({ ...cell })),
+    libraryVideos: (session.libraryVideos ?? []).map((video) => ({
+      label: video.label,
+      sourceKey: video.sourceKey ?? video.source,
+      thumbnailSource: video.thumbnailSource
+    })),
     presets: session.presets.map((preset) => ({
       ...preset,
       cells: preset.cells.map((cell) => ({ ...cell }))
@@ -42,8 +64,79 @@ function cloneSession(session: GridSession): GridSession {
   };
 }
 
-function sanitizeRestoredCell(cell: Cell): Cell {
-  if (cell.sourceType === 'local' && cell.source?.startsWith('blob:')) {
+function openHandleDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = window.indexedDB.open(HANDLE_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(HANDLE_STORE_NAME)) {
+        db.createObjectStore(HANDLE_STORE_NAME);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveHandle(key: string, handle: FileSystemFileHandle) {
+  const db = await openHandleDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(HANDLE_STORE_NAME, 'readwrite');
+    tx.objectStore(HANDLE_STORE_NAME).put(handle, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+
+async function loadHandle(key: string): Promise<FileSystemFileHandle | null> {
+  const db = await openHandleDb();
+  const result = await new Promise<FileSystemFileHandle | null>((resolve, reject) => {
+    const tx = db.transaction(HANDLE_STORE_NAME, 'readonly');
+    const request = tx.objectStore(HANDLE_STORE_NAME).get(key);
+    request.onsuccess = () => resolve((request.result as FileSystemFileHandle | undefined) ?? null);
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+  return result;
+}
+
+async function restoreLocalVideo(key: string): Promise<{ source: string; label: string } | null> {
+  const handle = await loadHandle(key);
+  if (!handle) {
+    return null;
+  }
+
+  try {
+    const file = await handle.getFile();
+    return {
+      source: URL.createObjectURL(file),
+      label: file.name.replace(/\.[^.]+$/, '') || 'Local Video'
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function sanitizeRestoredCell(cell: Cell): Promise<Cell> {
+  if (cell.sourceType !== 'local') {
+    return { ...cell };
+  }
+
+  if (cell.sourceKey) {
+    const restored = await restoreLocalVideo(cell.sourceKey);
+    if (restored) {
+      return {
+        ...cell,
+        source: restored.source,
+        resolvedSource: restored.source,
+        label: cell.label || restored.label,
+        status: 'ready'
+      };
+    }
+  }
+
+  if (cell.source?.startsWith('blob:')) {
     return {
       ...cell,
       source: null,
@@ -59,25 +152,58 @@ function sanitizeRestoredCell(cell: Cell): Cell {
   return { ...cell };
 }
 
-function restoreSession(raw: string | null): GridSession | null {
-  if (!raw) {
+async function restoreLibraryVideos(
+  videos: PersistedGridSession['libraryVideos']
+): Promise<FolderVideoSelection[]> {
+  const restored: Array<FolderVideoSelection | null> = await Promise.all(
+    (videos ?? []).map(async (video) => {
+      if (!video.sourceKey) {
+        return null;
+      }
+
+      const localVideo = await restoreLocalVideo(video.sourceKey);
+      if (!localVideo) {
+        return null;
+      }
+
+      return {
+        source: localVideo.source,
+        label: video.label || localVideo.label,
+        sourceKey: video.sourceKey,
+        thumbnailSource: video.thumbnailSource
+      } satisfies FolderVideoSelection;
+    })
+  );
+
+  return restored.filter((video): video is FolderVideoSelection => video !== null);
+}
+
+async function restoreSession(raw: string | null): Promise<GridSession | null> {
+  const parsed = parsePersistedSession(raw);
+  if (!parsed) {
     return null;
   }
 
   try {
-    const parsed = JSON.parse(raw) as GridSession;
     return {
       gridColumns: parsed.gridColumns,
       gridRows: parsed.gridRows,
       layoutMode: parsed.layoutMode,
       compactMode: parsed.compactMode,
-      cells: parsed.cells.map(sanitizeRestoredCell),
+      sidebarOpen: parsed.sidebarOpen,
+      cells: await Promise.all(parsed.cells.map(sanitizeRestoredCell)),
+      libraryVideos: await restoreLibraryVideos(parsed.libraryVideos),
       presets: parsed.presets ?? [],
       recentSources: parsed.recentSources ?? []
     };
   } catch {
     return null;
   }
+}
+
+export function peekStoredSidebarOpen(): boolean {
+  const parsed = parsePersistedSession(window.localStorage.getItem(SESSION_STORAGE_KEY));
+  return parsed?.sidebarOpen ?? true;
 }
 
 function persistSession(session: GridSession) {
@@ -140,6 +266,57 @@ async function pickLocalVideoFile(): Promise<File | null> {
   return files?.[0] ?? null;
 }
 
+async function pickLocalVideoSelection(): Promise<LocalVideoSelection | null> {
+  const pickerWindow = window as FilePickerWindow;
+
+  if (pickerWindow.showOpenFilePicker) {
+    try {
+      const [handle] = await pickerWindow.showOpenFilePicker({
+        multiple: false,
+        excludeAcceptAllOption: true,
+        types: [
+          {
+            description: 'Video Files',
+            accept: {
+              'video/mp4': ['.mp4'],
+              'video/webm': ['.webm'],
+              'video/quicktime': ['.mov'],
+              'video/x-matroska': ['.mkv'],
+              'video/x-msvideo': ['.avi']
+            }
+          }
+        ]
+      });
+
+      const file = await handle?.getFile();
+      if (!file) {
+        return null;
+      }
+
+      const sourceKey = `local:${file.name}:${file.size}:${file.lastModified}`;
+      await saveHandle(sourceKey, handle);
+      return {
+        source: URL.createObjectURL(file),
+        label: file.name.replace(/\.[^.]+$/, '') || 'Local Video',
+        sourceKey
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  const file = await pickLocalVideoFile();
+  if (!file) {
+    return null;
+  }
+
+  return {
+    source: URL.createObjectURL(file),
+    label: file.name.replace(/\.[^.]+$/, '') || 'Local Video',
+    sourceKey: `local:${file.name}:${file.size}:${file.lastModified}`
+  };
+}
+
 function isVideoFile(file: File): boolean {
   return (
     file.type.startsWith('video/') ||
@@ -147,22 +324,30 @@ function isVideoFile(file: File): boolean {
   );
 }
 
-async function pickVideoFolderFiles(): Promise<File[]> {
+async function pickVideoFolderFiles(): Promise<FolderVideoSelection[]> {
   const pickerWindow = window as FilePickerWindow;
 
   if (pickerWindow.showDirectoryPicker) {
     try {
       const handle = await pickerWindow.showDirectoryPicker();
-      const files: File[] = [];
+      const files: FolderVideoSelection[] = [];
 
-      for await (const entry of handle.values()) {
+      for await (const entry of (handle as FileSystemDirectoryHandle & {
+        values: () => AsyncIterable<FileSystemHandle>;
+      }).values()) {
         if (entry.kind !== 'file') {
           continue;
         }
 
-        const file = await entry.getFile();
+        const file = await (entry as FileSystemFileHandle).getFile();
         if (isVideoFile(file)) {
-          files.push(file);
+          const sourceKey = `local:${file.name}:${file.size}:${file.lastModified}`;
+          await saveHandle(sourceKey, entry as FileSystemFileHandle);
+          files.push({
+            source: URL.createObjectURL(file),
+            label: file.name.replace(/\.[^.]+$/, '') || 'Local Video',
+            sourceKey
+          });
         }
       }
 
@@ -179,7 +364,16 @@ async function pickVideoFolderFiles(): Promise<File[]> {
     input.multiple = true;
     input.accept = '.mp4,.mkv,.mov,.avi,.webm,.m4v,video/*';
     input.onchange = () => {
-      const files = Array.from(input.files ?? []).filter(isVideoFile);
+      const files = Array.from(input.files ?? [])
+        .filter(isVideoFile)
+        .map(
+          (file) =>
+            ({
+              source: URL.createObjectURL(file),
+              label: file.name.replace(/\.[^.]+$/, '') || 'Local Video',
+              sourceKey: `local:${file.name}:${file.size}:${file.lastModified}`
+            }) satisfies FolderVideoSelection
+        );
       resolve(files);
     };
     input.oncancel = () => resolve([]);
@@ -205,27 +399,10 @@ export const browserGridVideoApi: StorageApi = {
     persistSession(session);
   },
   async selectLocalVideo() {
-    const file = await pickLocalVideoFile();
-    if (!file) {
-      return null;
-    }
-
-    return {
-      source: URL.createObjectURL(file),
-      label: file.name.replace(/\.[^.]+$/, '') || 'Local Video',
-      sourceKey: `local:${file.name}:${file.size}:${file.lastModified}`
-    } satisfies LocalVideoSelection;
+    return pickLocalVideoSelection();
   },
   async selectVideoFolder() {
-    const files = await pickVideoFolderFiles();
-    return files.map(
-      (file) =>
-        ({
-          source: URL.createObjectURL(file),
-          label: file.name.replace(/\.[^.]+$/, '') || 'Local Video',
-          sourceKey: `local:${file.name}:${file.size}:${file.lastModified}`
-        }) satisfies FolderVideoSelection
-    );
+    return pickVideoFolderFiles();
   },
   async validateSource(value, local) {
     if (!value.trim()) {

@@ -31,6 +31,21 @@ function createBridgeMock(session?: GridSession) {
   };
 }
 
+function createStatefulBridge(initialSession?: GridSession) {
+  let session = initialSession ?? { cells: [], presets: [], recentSources: [] };
+  const bridge = createBridgeMock(session);
+
+  bridge.loadSession.mockImplementation(async () => session);
+  bridge.saveSession.mockImplementation(async (nextSession: GridSession) => {
+    session = JSON.parse(JSON.stringify(nextSession)) as GridSession;
+  });
+
+  return {
+    bridge,
+    getSession: () => session
+  };
+}
+
 describe('App UI behavior', () => {
   beforeEach(() => {
     resetGridStore();
@@ -460,5 +475,61 @@ describe('App UI behavior', () => {
     });
 
     expect(within(sidebarCard).getByText('2')).toBeInTheDocument();
+  });
+
+  it('restores sidebar state and library videos from the saved session on load', async () => {
+    const bridge = createBridgeMock({
+      cells: [],
+      presets: [],
+      recentSources: [],
+      sidebarOpen: false,
+      libraryVideos: [
+        {
+          source: 'blob:restored-camera',
+          label: 'Restored Camera',
+          sourceKey: 'local:restored-camera',
+          thumbnailSource: 'data:image/png;base64,restored'
+        }
+      ]
+    });
+    window.gridVideo = bridge;
+
+    render(<App />);
+
+    expect(await screen.findByRole('button', { name: 'Show Library' })).toBeInTheDocument();
+    expect(screen.queryByText('Restored Camera')).not.toBeInTheDocument();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Show Library' }));
+
+    expect(await screen.findByText('Restored Camera')).toBeInTheDocument();
+  });
+
+  it('flushes app state on page reload so sidebar status survives immediate remount', async () => {
+    const user = userEvent.setup();
+    const { bridge, getSession } = createStatefulBridge({
+      cells: [],
+      presets: [],
+      recentSources: [],
+      sidebarOpen: true,
+      libraryVideos: []
+    });
+    window.gridVideo = bridge;
+
+    const firstRender = render(<App />);
+
+    await screen.findByRole('button', { name: 'Hide Library' });
+    await user.click(screen.getByRole('button', { name: 'Hide Library' }));
+
+    fireEvent(window, new Event('pagehide'));
+    await waitFor(() => {
+      expect(getSession().sidebarOpen).toBe(false);
+    });
+
+    firstRender.unmount();
+    resetGridStore();
+
+    render(<App />);
+
+    expect(await screen.findByRole('button', { name: 'Show Library' })).toBeInTheDocument();
   });
 });

@@ -43,6 +43,8 @@ export interface GridSession {
   gridRows?: number;
   layoutMode?: LayoutMode;
   compactMode?: boolean;
+  sidebarOpen?: boolean;
+  libraryVideos?: FolderVideoSelection[];
   cells: Cell[];
   presets: Preset[];
   recentSources: string[];
@@ -75,6 +77,11 @@ export interface LocalVideoSelection {
 
 export interface FolderVideoSelection extends LocalVideoSelection {
   thumbnailSource?: string;
+}
+
+export interface GridLibraryState {
+  sidebarOpen?: boolean;
+  videos?: FolderVideoSelection[];
 }
 
 export interface GridVideoTestApi {

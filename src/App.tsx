@@ -3,18 +3,22 @@ import { GridConfigDialog } from './components/GridConfigDialog';
 import { Toolbar } from './components/Toolbar';
 import { VideoLibrarySidebar } from './components/VideoLibrarySidebar';
 import { VideoCell } from './components/VideoCell';
-import { getGridVideoApi } from './lib/grid-video-api';
+import { getGridVideoApi, peekStoredSidebarOpen } from './lib/grid-video-api';
 import { selectSession, useGridStore } from './state/grid-store';
 import type { Cell, FolderVideoSelection, Preset, SourceType } from './shared/types';
 
 function App() {
   const [gridConfigOpen, setGridConfigOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => peekStoredSidebarOpen());
   const [libraryVideos, setLibraryVideos] = useState<FolderVideoSelection[]>([]);
   const appRootRef = useRef<HTMLDivElement | null>(null);
   const videoMap = useRef(new Map<string, HTMLVideoElement>());
   const persistTimer = useRef<number | null>(null);
+  const uiStateRef = useRef({
+    sidebarOpen,
+    libraryVideos
+  });
   const api = getGridVideoApi();
 
   const {
@@ -50,9 +54,18 @@ function App() {
 
   useEffect(() => {
     void api.loadSession().then((session) => {
+      setSidebarOpen(session?.sidebarOpen ?? true);
+      setLibraryVideos(session?.libraryVideos ?? []);
       hydrateSession(session);
     });
   }, [api, hydrateSession]);
+
+  useEffect(() => {
+    uiStateRef.current = {
+      sidebarOpen,
+      libraryVideos
+    };
+  }, [libraryVideos, sidebarOpen]);
 
   useEffect(() => {
     if (!hydrated) {
@@ -64,17 +77,43 @@ function App() {
     }
 
     persistTimer.current = window.setTimeout(() => {
-      void api.saveSession(selectSession(useGridStore.getState()));
+      void api.saveSession({
+        ...selectSession(useGridStore.getState()),
+        sidebarOpen: uiStateRef.current.sidebarOpen,
+        libraryVideos: uiStateRef.current.libraryVideos
+      });
     }, 250);
-  }, [api, cells, columns, hydrated, layoutMode, presets, recentSources, rows]);
+  }, [api, cells, columns, hydrated, layoutMode, libraryVideos, presets, recentSources, rows, sidebarOpen]);
 
   useEffect(() => {
+    function persistImmediately() {
+      if (!hydrated) {
+        return;
+      }
+
+      if (persistTimer.current) {
+        window.clearTimeout(persistTimer.current);
+        persistTimer.current = null;
+      }
+
+      void api.saveSession({
+        ...selectSession(useGridStore.getState()),
+        sidebarOpen: uiStateRef.current.sidebarOpen,
+        libraryVideos: uiStateRef.current.libraryVideos
+      });
+    }
+
+    window.addEventListener('pagehide', persistImmediately);
+    window.addEventListener('beforeunload', persistImmediately);
+
     return () => {
+      window.removeEventListener('pagehide', persistImmediately);
+      window.removeEventListener('beforeunload', persistImmediately);
       if (persistTimer.current) {
         window.clearTimeout(persistTimer.current);
       }
     };
-  }, []);
+  }, [api, hydrated]);
 
   useEffect(() => {
     function handleFullscreenChange() {
