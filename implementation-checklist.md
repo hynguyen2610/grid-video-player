@@ -14,12 +14,14 @@ Implementation checklist derived from [grid-video-player-spec.md](/Users/hdnguye
 ## 2. App Shell and Layout
 
 - [ ] Build top-level app shell with fixed toolbar and resizable grid area
+- [ ] Keep the library sidebar independently scrollable regardless of grid layout mode
 - [ ] Add empty-state layout with a single `+ Add Video` action
 - [ ] Implement CSS grid container with dynamic column calculation
 - [ ] Implement row calculation from cell count and selected column count
 - [ ] Keep the `+ Add Video` tile as the last grid item at all times
 - [ ] Reflow layout automatically when cells are added or removed
 - [ ] Maintain usable spacing and sizing at 1x1 through 6x6 layouts
+- [ ] Scope fit-vs-scroll layout mode changes to the grid viewport only, not the sidebar or app shell
 - [ ] Preserve 16:9 presentation where possible and define fallback behavior for non-16:9 sources
 
 ## 3. State Management
@@ -175,4 +177,3 @@ Implementation checklist derived from [grid-video-player-spec.md](/Users/hdnguye
 - [ ] Choose whether cell labels are editable in v1 or only carried through presets/imports
 - [ ] Choose whether `Sync Playback` snaps all local files to the minimum, maximum, or current initiating timestamp
 - [ ] Choose what `Validate` means for local files versus stream URLs
-

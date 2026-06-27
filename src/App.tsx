@@ -367,16 +367,12 @@ function App() {
     return counts;
   }, {});
   const fitViewport = layoutMode === 'fit';
-  const rootClassName = fitViewport
-    ? 'flex h-screen flex-col overflow-hidden bg-[radial-gradient(circle_at_top,#1e2841,transparent_32%),linear-gradient(180deg,#0a0d14_0%,#0d1220_100%)] text-white'
-    : 'flex min-h-screen flex-col bg-[radial-gradient(circle_at_top,#1e2841,transparent_32%),linear-gradient(180deg,#0a0d14_0%,#0d1220_100%)] text-white';
-  const mainClassName = fitViewport
-    ? isFullscreen
-      ? 'flex-1 min-w-0 overflow-hidden p-3'
-      : 'flex-1 min-w-0 overflow-hidden p-5'
-    : isFullscreen
-      ? 'min-w-0 p-3'
-      : 'min-w-0 p-5';
+  const rootClassName =
+    'flex h-screen flex-col overflow-hidden bg-[radial-gradient(circle_at_top,#1e2841,transparent_32%),linear-gradient(180deg,#0a0d14_0%,#0d1220_100%)] text-white';
+  const mainClassName = isFullscreen
+    ? 'flex-1 min-w-0 overflow-hidden p-3'
+    : 'flex-1 min-w-0 overflow-hidden p-5';
+  const gridViewportClassName = fitViewport ? 'h-full overflow-hidden' : 'h-full overflow-y-auto overflow-x-hidden';
 
   return (
     <div
@@ -416,7 +412,7 @@ function App() {
         </button>
       ) : null}
 
-      <div className={`${fitViewport ? 'flex min-h-0 flex-1' : 'flex flex-1'}`}>
+      <div className="flex min-h-0 flex-1">
         {!isFullscreen ? (
           <VideoLibrarySidebar
             open={sidebarOpen}
@@ -429,42 +425,44 @@ function App() {
         ) : null}
 
         <main data-testid="app-main" className={mainClassName}>
-          <div
-            data-testid="video-grid"
-            className={`grid gap-3 ${fitViewport ? 'h-full' : ''}`}
-            style={{
-              gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-              gridAutoFlow: 'dense',
-              ...(fitViewport
-                ? {
-                    gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`
-                  }
-                : {
-                    gridAutoRows: isFullscreen ? 'minmax(160px, 1fr)' : 'minmax(220px, 1fr)'
-                  })
-            }}
-          >
-            {cells.map((cell) => (
-              <VideoCell
-                key={cell.id}
-                cell={cell}
-                compact={compactMode}
-                isEmpty={!cell.source}
-                maxColumns={columns}
-                maxRows={rows}
-                onAddSource={(id) => void changeLocalVideo(id)}
-                onDropSource={(id, payload) => void handleDropVideo(id, payload)}
-                onResizeCell={setCellSpan}
-                onPlayChange={setCellPlayback}
-                onMutedChange={setCellMuted}
-                onVolumeChange={setCellVolume}
-                onTimeChange={setCellTime}
-                onStatusChange={setCellStatus}
-                onChangeSource={(id) => void changeLocalVideo(id)}
-                onRemove={handleRemove}
-                registerVideo={registerVideo}
-              />
-            ))}
+          <div data-testid="grid-viewport" className={gridViewportClassName}>
+            <div
+              data-testid="video-grid"
+              className={`grid gap-3 ${fitViewport ? 'h-full' : ''}`}
+              style={{
+                gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                gridAutoFlow: 'dense',
+                ...(fitViewport
+                  ? {
+                      gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`
+                    }
+                  : {
+                      gridAutoRows: isFullscreen ? 'minmax(160px, 1fr)' : 'minmax(220px, 1fr)'
+                    })
+              }}
+            >
+              {cells.map((cell) => (
+                <VideoCell
+                  key={cell.id}
+                  cell={cell}
+                  compact={compactMode}
+                  isEmpty={!cell.source}
+                  maxColumns={columns}
+                  maxRows={rows}
+                  onAddSource={(id) => void changeLocalVideo(id)}
+                  onDropSource={(id, payload) => void handleDropVideo(id, payload)}
+                  onResizeCell={setCellSpan}
+                  onPlayChange={setCellPlayback}
+                  onMutedChange={setCellMuted}
+                  onVolumeChange={setCellVolume}
+                  onTimeChange={setCellTime}
+                  onStatusChange={setCellStatus}
+                  onChangeSource={(id) => void changeLocalVideo(id)}
+                  onRemove={handleRemove}
+                  registerVideo={registerVideo}
+                />
+              ))}
+            </div>
           </div>
 
           {activeCells.length === 0 ? (

@@ -395,11 +395,12 @@ export function VideoLibrarySidebar({
 }: VideoLibrarySidebarProps) {
   return (
     <aside
+      data-testid="video-library-sidebar"
       className={`border-r border-border/70 bg-canvas/85 backdrop-blur transition-all duration-200 ${
         open ? 'w-80' : 'w-14'
       }`}
     >
-      <div className="flex h-full flex-col">
+      <div className="flex h-full min-h-0 flex-col">
         <div className="flex items-center justify-between border-b border-border/60 px-3 py-3">
           <button
             type="button"
@@ -420,7 +421,10 @@ export function VideoLibrarySidebar({
         </div>
 
         {open ? (
-          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          <div
+            data-testid="video-library-scroll-region"
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3"
+          >
             <div className="mb-3">
               <p className="text-xs uppercase tracking-[0.3em] text-accentSoft">Library</p>
               <p className="mt-1 text-sm text-slate-400">

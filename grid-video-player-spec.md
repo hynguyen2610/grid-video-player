@@ -33,6 +33,10 @@ A desktop application that plays multiple video sources simultaneously in a conf
 - The **+ Add Video** button is always the last item in the grid, after all active cells
 - Removing a cell collapses the grid and reflows remaining cells
 - Grid state (sources, layout, playback positions) persists across sessions
+- The library sidebar remains independently scrollable at all times
+- Layout mode applies only to the video grid canvas:
+  - `Fit to Viewport` keeps the full grid visible inside the available grid area
+  - `Scrolling` allows only the grid area to scroll when the wall grows taller than the viewport
 
 ---
 
@@ -140,6 +144,7 @@ Preset JSON shape:
 ```
 
 - **Toolbar** — fixed top bar, always visible; houses global controls and preset management
+- **Library sidebar** — fixed within the app shell with its own vertical scroll region independent from the grid
 - **Active cell** — video frame above, persistent control bar below
 - **Add Video button** — always the last item in the grid; clicking opens the Source Picker dialog; styled distinctly from active cells (dashed border, centered `+` icon)
 - Grid reflows automatically as cells are added or removed

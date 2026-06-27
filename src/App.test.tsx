@@ -342,7 +342,7 @@ describe('App UI behavior', () => {
     });
   });
 
-  it('defaults to fit-to-viewport layout and lets the user switch to scrolling in grid config', async () => {
+  it('keeps the sidebar scrollable and scopes layout mode changes to the video grid', async () => {
     const user = userEvent.setup();
     const bridge = createBridgeMock();
     window.gridVideo = bridge;
@@ -353,6 +353,9 @@ describe('App UI behavior', () => {
 
     expect(useGridStore.getState().layoutMode).toBe('fit');
     expect(screen.getByTestId('app-shell').className).toContain('h-screen');
+    expect(screen.getByTestId('video-library-scroll-region').className).toContain('overflow-y-auto');
+    expect(screen.getByTestId('video-library-scroll-region').className).toContain('overscroll-contain');
+    expect(screen.getByTestId('grid-viewport').className).toContain('overflow-hidden');
 
     await user.click(screen.getByRole('button', { name: 'Grid Config' }));
     await user.click(screen.getByRole('button', { name: /Scrolling/i }));
@@ -361,7 +364,10 @@ describe('App UI behavior', () => {
     await waitFor(() => {
       expect(useGridStore.getState().layoutMode).toBe('scroll');
     });
-    expect(screen.getByTestId('app-shell').className).toContain('min-h-screen');
+    expect(screen.getByTestId('app-shell').className).toContain('h-screen');
+    expect(screen.getByTestId('video-library-scroll-region').className).toContain('overflow-y-auto');
+    expect(screen.getByTestId('video-library-scroll-region').className).toContain('overscroll-contain');
+    expect(screen.getByTestId('grid-viewport').className).toContain('overflow-y-auto');
   });
 
   it('defaults to compact mode and lets the user switch back to expanded chrome', async () => {
